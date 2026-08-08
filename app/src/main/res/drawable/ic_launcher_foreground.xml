@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Stylised cirrus streak over a chat cloud. -->
+    <path
+        android:fillColor="#F2F0EC"
+        android:pathData="M40,66 C33.4,66 28,60.6 28,54 C28,47.9 32.6,42.8 38.5,42.1 C40.2,35.1 46.5,30 54,30 C61.5,30 67.8,35.1 69.5,42.1 C75.4,42.8 80,47.9 80,54 C80,60.6 74.6,66 68,66 Z" />
+    <path
+        android:fillColor="#C8703C"
+        android:pathData="M36,72 L60,72 A2.5,2.5 0 0,1 60,77 L36,77 A2.5,2.5 0 0,1 36,72 Z" />
+    <path
+        android:fillColor="#C8703C"
+        android:pathData="M46,80 L72,80 A2.5,2.5 0 0,1 72,85 L46,85 A2.5,2.5 0 0,1 46,80 Z" />
+</vector>
