@@ -94,4 +94,48 @@ class MarkdownInlineTest {
         assertTrue(result.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
         assertTrue(result.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
     }
+
+    @Test
+    fun `inline maths loses its delimiters and is set in italic`() {
+        val result = buildInlineMarkdown("Time is \$O(n \\log n)\$ overall.", styles)
+
+        assertEquals("Time is O(n log n) overall.", result.text)
+        assertTrue(result.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
+    }
+
+    @Test
+    fun `display maths is unwrapped too`() {
+        assertEquals("a² + b² = c²", buildInlineMarkdown("\$\$a^2 + b^2 = c^2\$\$", styles).text)
+        assertEquals("x → ∞", buildInlineMarkdown("\\(x \\to \\infty\\)", styles).text)
+        assertEquals("E = mc²", buildInlineMarkdown("\\[E = mc^2\\]", styles).text)
+    }
+
+    @Test
+    fun `currency is not mistaken for maths`() {
+        // The closing candidate is preceded by a space, so this is prose about money.
+        assertEquals("It costs \$5 and \$10.", buildInlineMarkdown("It costs \$5 and \$10.", styles).text)
+        assertEquals("\$100 or \$200", buildInlineMarkdown("\$100 or \$200", styles).text)
+    }
+
+    @Test
+    fun `a lone dollar sign is left alone`() {
+        assertEquals("costs \$5", buildInlineMarkdown("costs \$5", styles).text)
+        assertEquals("\$", buildInlineMarkdown("\$", styles).text)
+    }
+
+    @Test
+    fun `maths does not swallow a paragraph break`() {
+        val result = buildInlineMarkdown("\$x + 1\n\nand later \$y\$", styles)
+
+        assertTrue(result.text.startsWith("\$x + 1"))
+    }
+
+    @Test
+    fun `maths inside code stays literal`() {
+        // A code span is claimed first, so nothing inside it is reinterpreted.
+        val result = buildInlineMarkdown("`\$x^2\$`", styles)
+
+        assertEquals("\$x^2\$", result.text)
+        assertTrue(result.spanStyles.any { it.item.fontFamily == FontFamily.Monospace })
+    }
 }

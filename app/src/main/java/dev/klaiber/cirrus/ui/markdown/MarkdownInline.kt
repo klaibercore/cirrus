@@ -43,6 +43,22 @@ private fun AnnotatedString.Builder.appendInline(text: String, styles: MarkdownS
     while (index < text.length) {
         val char = text[index]
 
+        // Maths delimiters are checked before the escape rule, which would otherwise eat the
+        // backslash in `\(` and leave a bare bracket.
+        if (char == '$' || (char == '\\' && (text.startsWith("\\(", index) ||
+                text.startsWith("\\[", index)))
+        ) {
+            val math = parseMath(text, index)
+            if (math != null) {
+                flush()
+                withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                    append(renderMathToUnicode(math.body))
+                }
+                index = math.endIndex
+                continue
+            }
+        }
+
         // Backslash escapes only apply to punctuation, per CommonMark.
         if (char == '\\' && index + 1 < text.length && !text[index + 1].isLetterOrDigit()) {
             plain.append(text[index + 1])
@@ -166,6 +182,42 @@ private fun AnnotatedString.Builder.appendInline(text: String, styles: MarkdownS
         index++
     }
     flush()
+}
+
+private class Math(val body: String, val endIndex: Int)
+
+/**
+ * Matches a maths span at [start], or returns null to leave the character as literal text.
+ *
+ * The `$` form needs care, because prose is full of dollar signs. Two rules keep currency out:
+ * the opening `$` must be followed immediately by a non-space, and the closing one preceded by a
+ * non-space. "$5 and $10" fails the second — the candidate content "5 and " ends in a space — so
+ * it stays as written. A span may not cross a blank line either, which stops one stray `$` from
+ * swallowing the rest of a message.
+ */
+private fun parseMath(text: String, start: Int): Math? {
+    val (open, close) = when {
+        text.startsWith("$$", start) -> "$$" to "$$"
+        text.startsWith("\\(", start) -> "\\(" to "\\)"
+        text.startsWith("\\[", start) -> "\\[" to "\\]"
+        text[start] == '$' -> "$" to "$"
+        else -> return null
+    }
+
+    val contentStart = start + open.length
+    if (contentStart >= text.length) return null
+    if (open == "$" && text[contentStart].isWhitespace()) return null
+
+    val closeIndex = text.indexOf(close, contentStart)
+    if (closeIndex <= contentStart) return null
+    if (open == "$" && text[closeIndex - 1].isWhitespace()) return null
+
+    val body = text.substring(contentStart, closeIndex)
+    if (body.contains("\n\n")) return null
+    // Without this, "100$ or 200$" would render "or" as maths.
+    if (open == "$" && body.none { it.isLetterOrDigit() || it == '\\' }) return null
+
+    return Math(body, closeIndex + close.length)
 }
 
 private fun linkAnnotation(url: String, styles: MarkdownStyles) = LinkAnnotation.Url(

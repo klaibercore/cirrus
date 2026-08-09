@@ -26,6 +26,10 @@ release moves these entries under `## [1.0.0] - YYYY-MM-DD`; see
 
 ### Fixed
 
+- LaTeX maths rendered verbatim, so an answer about complexity arrived as `$O(n) + O(n) = O(n)$`
+  and `\approx` showed up as five characters of backslash. A practical subset now renders as
+  Unicode; anything unrecognised degrades to its own name rather than its source.
+
 - Cloud models showed a raw parameter count in the picker — `32682372656` rather than `32.7B` —
   because `/api/show` labels the value for local models but not for hosted ones. A model that
   publishes no count showed a bare `0`; it is now omitted.
