@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `github_create_or_update_file` — commit a single file to a repository, behind the existing
+  default-off write switch. Resolves the blob SHA itself so updates do not need one supplied.
 - Test coverage for `/api/show` capability detection, against recorded response fixtures.
 
 ### Changed

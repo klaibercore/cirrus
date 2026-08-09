@@ -10,6 +10,8 @@ import dev.klaiber.cirrus.data.remote.github.dto.ErrorResponseDto
 import dev.klaiber.cirrus.data.remote.github.dto.IssueDto
 import dev.klaiber.cirrus.data.remote.github.dto.PullDto
 import dev.klaiber.cirrus.data.remote.github.dto.PullFileDto
+import dev.klaiber.cirrus.data.remote.github.dto.PutFileRequestDto
+import dev.klaiber.cirrus.data.remote.github.dto.PutFileResponseDto
 import dev.klaiber.cirrus.data.remote.github.dto.RepoDto
 import dev.klaiber.cirrus.data.remote.github.dto.SearchCodeResponseDto
 import dev.klaiber.cirrus.di.GitHubHttp
@@ -53,7 +55,7 @@ sealed class GitHubException(message: String) : IOException(message) {
 
     class WritesDisabled : GitHubException(
         "Write actions are turned off. Enable them in Settings › GitHub to let a model open " +
-            "issues, comment or post reviews.",
+            "issues, comment, post reviews or commit files.",
     )
 
     class Failed(val code: Int, detail: String?) :
@@ -121,6 +123,26 @@ class GitHubClient @Inject constructor(
         query = ref?.let { mapOf("ref" to it) }.orEmpty(),
         deserializer = ListSerializer(ContentDto.serializer()),
         describe = "$owner/$repo/${path.ifBlank { "/" }}",
+    )
+
+    /**
+     * Creates or replaces a single file.
+     *
+     * One endpoint covers both: omitting `sha` asserts the file is new, supplying it replaces
+     * exactly that blob. GitHub answers 422 when the assertion is wrong, which the tool layer
+     * turns into an instruction to read the file first.
+     */
+    suspend fun putFile(
+        owner: String,
+        repo: String,
+        path: String,
+        body: PutFileRequestDto,
+    ): PutFileResponseDto = put(
+        path = listOf("repos", owner, repo, "contents") +
+            path.trim('/').split('/').filter { it.isNotEmpty() },
+        payload = json.encodeToString(PutFileRequestDto.serializer(), body),
+        deserializer = PutFileResponseDto.serializer(),
+        describe = "$owner/$repo/$path",
     )
 
     // ---- Issues -------------------------------------------------------------------------------
@@ -255,6 +277,17 @@ class GitHubClient @Inject constructor(
         execute(request, describe) { json.decodeFromString(deserializer, it) }
     }
 
+    private suspend fun <T> put(
+        path: List<String>,
+        payload: String,
+        deserializer: DeserializationStrategy<T>,
+        describe: String,
+    ): T = withContext(Dispatchers.IO) {
+        requireWrites()
+        val request = buildRequest(url(path), payload, method = "PUT")
+        execute(request, describe) { json.decodeFromString(deserializer, it) }
+    }
+
     private fun requireToken() {
         if (credentials.token == null) throw GitHubException.MissingToken()
     }
@@ -273,12 +306,12 @@ class GitHubClient @Inject constructor(
             }
             .build()
 
-    private fun buildRequest(url: HttpUrl, payload: String?): Request =
+    private fun buildRequest(url: HttpUrl, payload: String?, method: String = "POST"): Request =
         Request.Builder()
             .url(url)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", API_VERSION)
-            .apply { payload?.let { post(it.toRequestBody(JSON_MEDIA_TYPE)) } }
+            .apply { payload?.let { method(method, it.toRequestBody(JSON_MEDIA_TYPE)) } }
             .build()
 
     private fun <T> execute(request: Request, describe: String, parse: (String) -> T): T {
@@ -322,5 +355,16 @@ class GitHubClient @Inject constructor(
         /** GitHub returns file contents as base64 with hard-wrapped lines. */
         fun decodeContent(content: String): String =
             String(Base64.decode(content.replace("\n", ""), Base64.DEFAULT), Charsets.UTF_8)
+
+        /**
+         * The inverse, for uploads.
+         *
+         * Uses `java.util.Base64` rather than the Android one so the encoding is exercised by
+         * JVM tests — `unitTests.isReturnDefaultValues` would otherwise stub `android.util.Base64`
+         * out and let a broken request body pass. It has been available since API 26, below the
+         * project's minSdk of 29.
+         */
+        fun encodeContent(content: String): String =
+            java.util.Base64.getEncoder().encodeToString(content.toByteArray(Charsets.UTF_8))
     }
 }

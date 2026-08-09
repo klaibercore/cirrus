@@ -27,6 +27,7 @@ import dev.klaiber.cirrus.domain.tools.github.ListReposTool
 import dev.klaiber.cirrus.domain.tools.github.ReadFileTool
 import dev.klaiber.cirrus.domain.tools.github.ReviewPullRequestTool
 import dev.klaiber.cirrus.domain.tools.github.SearchCodeTool
+import dev.klaiber.cirrus.domain.tools.github.WriteFileTool
 import dev.klaiber.cirrus.domain.tools.WebFetchTool
 import dev.klaiber.cirrus.domain.tools.WebSearchTool
 import kotlinx.coroutines.CoroutineScope
@@ -97,6 +98,7 @@ class ChatEngineTest {
                 createIssue = CreateIssueTool(gitHubClient),
                 comment = CommentTool(gitHubClient),
                 reviewPull = ReviewPullRequestTool(gitHubClient),
+                writeFile = WriteFileTool(gitHubClient),
             ),
             settingsRepository = settingsRepository,
             gitHubCredentials = gitHubCredentials,

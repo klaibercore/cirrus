@@ -41,7 +41,7 @@ what a context window is, and gets out of your way:
 | ⚡ **True token streaming** | NDJSON straight from `/api/chat`. Hit stop and the OkHttp call is cancelled, so the server stops generating too — no phantom token burn. |
 | 🤔 **Reasoning traces** | `thinking` deltas stream into a collapsible section, with effort control for models that support it. |
 | 🔧 **Tool calling** | Bounded multi-round tool loops. Web search, page fetch, GitHub, and any MCP server you attach. |
-| 🐙 **GitHub integration** | Read code in public *and* private repos, search, browse trees, read issues and PR diffs. Opening issues, commenting and posting reviews are behind a separate, default-off switch. |
+| 🐙 **GitHub integration** | Read code in public *and* private repos, search, browse trees, read issues and PR diffs. Opening issues, commenting, posting reviews and committing files are behind a separate, default-off switch. |
 | 🔌 **MCP client** | Streamable-HTTP Model Context Protocol client. Point it at a remote server and its tools are discovered at runtime. |
 | 🎙️ **Voice dictation** | Speak into the composer with a live level meter. Prefers Android's on-device recogniser, so audio need never leave the phone. |
 | ✍️ **Markdown that survives streaming** | A hand-written CommonMark subset tolerant of half-finished input, with a real lexer for syntax highlighting — not regex passes that mistake `//` inside a string for a comment. |
@@ -101,6 +101,7 @@ Give Cirrus a token and the model can navigate your codebase mid-answer.
 | `github_create_issue` | | ⚠️ |
 | `github_comment` | | ⚠️ |
 | `github_review_pull_request` | | ⚠️ |
+| `github_create_or_update_file` | | ⚠️ |
 
 > **The write gate is enforced at the HTTP client, not in the tool.** With writes disabled, the
 > write tools are not even offered to the model, so it cannot try and fail — and a new mutating
@@ -137,7 +138,7 @@ graph TD
     subgraph domain["domain — pure Kotlin, no Android"]
         Engine[ChatEngine<br/>the turn protocol]
         Registry[ToolRegistry]
-        Tools[WebSearch · WebFetch<br/>GitHub × 11 · MCP]
+        Tools[WebSearch · WebFetch<br/>GitHub × 12 · MCP]
     end
 
     subgraph data["data"]

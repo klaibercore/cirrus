@@ -15,6 +15,7 @@ import dev.klaiber.cirrus.domain.tools.github.ListReposTool
 import dev.klaiber.cirrus.domain.tools.github.ReadFileTool
 import dev.klaiber.cirrus.domain.tools.github.ReviewPullRequestTool
 import dev.klaiber.cirrus.domain.tools.github.SearchCodeTool
+import dev.klaiber.cirrus.domain.tools.github.WriteFileTool
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -213,6 +214,7 @@ class GitHubToolSet @Inject constructor(
     createIssue: CreateIssueTool,
     comment: CommentTool,
     reviewPull: ReviewPullRequestTool,
+    writeFile: WriteFileTool,
 ) {
     val all: List<CirrusTool> = listOf(
         listRepos,
@@ -226,6 +228,7 @@ class GitHubToolSet @Inject constructor(
         createIssue,
         comment,
         reviewPull,
+        writeFile,
     )
 
     /** Tools that change state on GitHub, derived from each tool's [GitHubTool.writes]. */

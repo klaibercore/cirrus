@@ -37,6 +37,8 @@ data class ContentDto(
     /** Base64 with embedded newlines, and absent for directory entries. */
     val content: String? = null,
     val encoding: String? = null,
+    /** The blob SHA. Updating a file requires echoing it back, so it is not decoration. */
+    val sha: String? = null,
     @SerialName("html_url") val htmlUrl: String? = null,
 )
 
@@ -142,6 +144,33 @@ data class CreateIssueRequestDto(
 @Serializable
 data class CommentRequestDto(
     val body: String,
+)
+
+/**
+ * Body for `PUT /repos/{owner}/{repo}/contents/{path}`.
+ *
+ * [sha] is what separates a create from an update: absent means "this file must not exist yet",
+ * present means "replace exactly this blob". Sending the wrong one is a 422.
+ */
+@Serializable
+data class PutFileRequestDto(
+    val message: String,
+    /** Base64, unwrapped. */
+    val content: String,
+    val branch: String? = null,
+    val sha: String? = null,
+)
+
+@Serializable
+data class PutFileResponseDto(
+    val content: ContentDto? = null,
+    val commit: CommitDto? = null,
+)
+
+@Serializable
+data class CommitDto(
+    val sha: String = "",
+    @SerialName("html_url") val htmlUrl: String? = null,
 )
 
 @Serializable
