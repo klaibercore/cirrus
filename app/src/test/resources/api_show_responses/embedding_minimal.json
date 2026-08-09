@@ -1,0 +1,12 @@
+{
+  "details": {
+    "parent_model": "",
+    "format": "gguf",
+    "family": "",
+    "families": null,
+    "parameter_size": "",
+    "quantization_level": ""
+  },
+  "model_info": {},
+  "capabilities": ["embedding"]
+}

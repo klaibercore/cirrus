@@ -57,30 +57,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.klaiber.cirrus.domain.model.ModelCapability
+import dev.klaiber.cirrus.domain.model.ModelFilter
 import dev.klaiber.cirrus.domain.model.ModelInfo
 import dev.klaiber.cirrus.ui.components.HelpBadge
-
-/** The facets the list can be narrowed by, in the order they appear as chips. */
-private enum class ModelFilter(val label: String) {
-    ALL("All"),
-    VISION("Vision"),
-    THINKING("Reasoning"),
-    TOOLS("Tools"),
-    AUDIO("Audio"),
-    CLOUD("Cloud"),
-    LOCAL("Local"),
-    ;
-
-    fun matches(model: ModelInfo): Boolean = when (this) {
-        ALL -> true
-        VISION -> model.supportsVision
-        THINKING -> model.supportsThinking
-        TOOLS -> model.supportsTools
-        AUDIO -> model.supportsAudio
-        CLOUD -> model.isCloudHosted
-        LOCAL -> !model.isCloudHosted
-    }
-}
 
 /**
  * Model chooser.
@@ -104,15 +83,11 @@ fun ModelPickerSheet(
     var filter by remember { mutableStateOf(ModelFilter.ALL) }
 
     val filtered = remember(models, query, filter) {
-        models
-            .filter { filter.matches(it) }
+        ModelFilter.apply(models, filter)
             .filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
     }
-    // A facet nobody can satisfy is a dead end; only offer filters that would return something.
     val availableFilters = remember(models) {
-        ModelFilter.entries.filter { candidate ->
-            candidate == ModelFilter.ALL || models.any(candidate::matches)
-        }
+        ModelFilter.available(models)
     }
 
     ModalBottomSheet(

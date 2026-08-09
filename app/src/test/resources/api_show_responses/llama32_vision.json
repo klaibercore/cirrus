@@ -1,0 +1,16 @@
+{
+  "details": {
+    "parent_model": "",
+    "format": "gguf",
+    "family": "mllama",
+    "families": ["mllama", "mllama"],
+    "parameter_size": "10.7B",
+    "quantization_level": "Q4_K_M"
+  },
+  "model_info": {
+    "general.architecture": "mllama",
+    "mllama.context_length": 131072,
+    "mllama.vision.block_count": 32
+  },
+  "capabilities": ["completion", "vision"]
+}

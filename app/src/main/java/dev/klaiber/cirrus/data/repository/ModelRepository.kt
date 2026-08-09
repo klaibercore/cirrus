@@ -1,10 +1,10 @@
 package dev.klaiber.cirrus.data.repository
 
+import dev.klaiber.cirrus.data.remote.ModelCapabilityDetector
 import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.dto.ShowResponseDto
 import dev.klaiber.cirrus.data.remote.dto.TagModelDto
 import dev.klaiber.cirrus.di.ApplicationScope
-import dev.klaiber.cirrus.domain.model.ModelCapability
 import dev.klaiber.cirrus.domain.model.ModelInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -18,8 +18,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.intOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,6 +34,7 @@ import javax.inject.Singleton
 @Singleton
 class ModelRepository @Inject constructor(
     private val client: OllamaClient,
+    private val detector: ModelCapabilityDetector,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
     private val refreshMutex = Mutex()
@@ -108,22 +107,18 @@ class ModelRepository @Inject constructor(
         return true
     }
 
-    private fun ModelInfo.merge(detail: ShowResponseDto): ModelInfo = copy(
-        parameterSize = detail.details?.parameterSize?.takeIf { it.isNotBlank() } ?: parameterSize,
-        quantization = detail.details?.quantizationLevel?.takeIf { it.isNotBlank() } ?: quantization,
-        family = detail.details?.family?.takeIf { it.isNotBlank() } ?: family,
-        reportedCapabilities = detail.capabilities.mapNotNull(ModelCapability::fromWire).toSet(),
-        contextLength = detail.contextLength() ?: contextLength,
-        remoteHost = detail.remoteHost?.takeIf { it.isNotBlank() } ?: remoteHost,
-    )
-
-    /** `model_info` keys are architecture-prefixed, e.g. `qwen3.context_length`. */
-    private fun ShowResponseDto.contextLength(): Int? = modelInfo
-        ?.entries
-        ?.firstOrNull { (key, _) -> key.endsWith(CONTEXT_LENGTH_SUFFIX) }
-        ?.value
-        ?.let { it as? JsonPrimitive }
-        ?.intOrNull
+    /** Detail already known from `/api/tags` is kept when `/api/show` is silent about it. */
+    private fun ModelInfo.merge(detail: ShowResponseDto): ModelInfo =
+        detector.detect(detail).let { detected ->
+            copy(
+                parameterSize = detected.parameterSize ?: parameterSize,
+                quantization = detected.quantization ?: quantization,
+                family = detected.family ?: family,
+                reportedCapabilities = detected.capabilities,
+                contextLength = detected.contextLength ?: contextLength,
+                remoteHost = detected.remoteHost ?: remoteHost,
+            )
+        }
 
     private fun toModelInfo(dto: TagModelDto): ModelInfo = ModelInfo(
         name = dto.name,
@@ -137,6 +132,5 @@ class ModelRepository @Inject constructor(
     private companion object {
         const val DETAIL_BATCH_SIZE = 4
         const val GIVE_UP_AFTER_FAILURES = 4
-        const val CONTEXT_LENGTH_SUFFIX = ".context_length"
     }
 }
