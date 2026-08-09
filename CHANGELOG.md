@@ -13,6 +13,8 @@ release moves these entries under `## [1.0.0] - YYYY-MM-DD`; see
 
 ### Added
 
+- An F-Droid build recipe, staged in `klaibercore/fdroid-cirrus-metadata`. Not yet submitted to
+  fdroiddata; it needs a `v1.0.0` tag to build from.
 - MCP over the older two-channel SSE transport, alongside the streamable-HTTP one. A server that
   answers the streamable-HTTP handshake with an `endpoint` event is retried on SSE automatically,
   so attaching an older server needs no configuration.

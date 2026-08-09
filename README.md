@@ -15,6 +15,25 @@ actually do things.**
 
 ---
 
+## Install
+
+<!-- The F-Droid link stays dead until the fdroiddata merge request is accepted. -->
+[![Get it on F-Droid](https://fdroid.gitlab.io/artwork/badge/get-it-on.png)](https://f-droid.org/packages/dev.klaiber.cirrus/)
+&nbsp;
+[![Get it on GitHub](https://img.shields.io/badge/Get%20it%20on-GitHub%20Releases-24292f?logo=github&logoColor=white)](https://github.com/klaibercore/cirrus/releases)
+
+- **[Obtainium](https://github.com/ImranR98/Obtainium)** — add
+  `https://github.com/klaibercore/cirrus` and it tracks each release automatically. The
+  recommended path.
+- **[GitHub Releases](https://github.com/klaibercore/cirrus/releases)** — signed APK with a
+  `.sha256` beside it.
+- **F-Droid** — recipe written, *not yet submitted*: it needs a `v1.0.0` tag to build from. See
+  [Releasing](#releasing).
+
+Or build it yourself — see [Building](#building).
+
+---
+
 ## Why Cirrus?
 
 - Asks `/api/show` what each model can do, instead of guessing from names.
@@ -202,7 +221,7 @@ tested against a mock server rather than a device.
 
 ---
 
-## Releases
+## Releasing
 
 Every `vX.Y.Z` tag builds a signed APK and publishes it to the
 [Releases page](https://github.com/klaibercore/cirrus/releases) with a `.sha256` beside it.
@@ -220,6 +239,17 @@ apksigner verify --print-certs cirrus-1.0.0-release.apk
 
 The certificate fingerprint is identical across every release. If it ever changes, the build did
 not come from here. [docs/RELEASING.md](docs/RELEASING.md) covers cutting one.
+
+### F-Droid
+
+The build recipe is written and kept in
+[klaibercore/fdroid-cirrus-metadata](https://github.com/klaibercore/fdroid-cirrus-metadata). It
+is **not submitted yet** — F-Droid builds from a tag, and `v1.0.0` has not been pushed. Once it
+is, the recipe goes to [fdroiddata](https://gitlab.com/fdroid/fdroiddata) as a merge request;
+this section will carry the link.
+
+Note that F-Droid signs with its own key, so an F-Droid install and a GitHub Releases install
+cannot be upgraded into one another — pick one channel and stay on it.
 
 ---
 
