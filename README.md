@@ -34,6 +34,19 @@ Or build it yourself — see [Building](#building).
 
 ---
 
+## Screenshots
+
+| | |
+|:---:|:---:|
+| ![Model picker showing capability chips](docs/screenshots/01-model-picker.png) | ![Capability chips on a model card](docs/screenshots/02-capability-chips.png) |
+| **Model picker knows which models support tools and vision** | **Capability chips — see at a glance what each model can do** |
+| ![Streaming answer with a reasoning trace](docs/screenshots/03-streaming-reasoning.png) | ![GitHub tool switches in Settings](docs/screenshots/04-github-tools.png) |
+| **Streaming chat with visible reasoning trace** | **GitHub tools — each one switchable, writes off by default** |
+| ![A model reading a repository through the GitHub tool](docs/screenshots/05-github-tool.png) | ![Connection settings storing the key in the Keystore](docs/screenshots/06-keystore.png) |
+| **GitHub tool — let the model read your repo** | **Credentials stay in the Android Keystore** |
+
+---
+
 ## Why Cirrus?
 
 - Asks `/api/show` what each model can do, instead of guessing from names.
