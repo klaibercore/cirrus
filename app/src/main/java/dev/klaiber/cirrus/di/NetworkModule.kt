@@ -52,7 +52,8 @@ object NetworkModule {
      * A separate client for github.com.
      *
      * The Ollama client above attaches the Ollama API key to every request it makes. Reusing it
-     * would send that key to GitHub, so the two never share a builder.
+     * would send that key to GitHub, so the two never share a client — the type system enforces
+     * it via the [GitHubHttp] qualifier.
      */
     @Provides
     @Singleton
@@ -77,10 +78,10 @@ object NetworkModule {
                     )
                 }
             }
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            // Unlike a streaming generation, every GitHub call is a bounded request/response.
+            // Unlike a generation, every GitHub call is a bounded request/response.
+            .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .callTimeout(60, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()

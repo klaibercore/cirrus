@@ -5,6 +5,7 @@ import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.tools.github.CommentTool
 import dev.klaiber.cirrus.domain.tools.github.CreateIssueTool
+import dev.klaiber.cirrus.domain.tools.github.GitHubTool
 import dev.klaiber.cirrus.domain.tools.github.GetIssueTool
 import dev.klaiber.cirrus.domain.tools.github.GetPullRequestTool
 import dev.klaiber.cirrus.domain.tools.github.ListDirectoryTool
@@ -213,8 +214,6 @@ class GitHubToolSet @Inject constructor(
     comment: CommentTool,
     reviewPull: ReviewPullRequestTool,
 ) {
-    val writeTools: Set<CirrusTool> = setOf(createIssue, comment, reviewPull)
-
     val all: List<CirrusTool> = listOf(
         listRepos,
         searchCode,
@@ -224,7 +223,13 @@ class GitHubToolSet @Inject constructor(
         getIssue,
         listPulls,
         getPull,
-    ) + writeTools
+        createIssue,
+        comment,
+        reviewPull,
+    )
+
+    /** Tools that change state on GitHub, derived from each tool's [GitHubTool.writes]. */
+    val writeTools: Set<CirrusTool> = all.filter { it is GitHubTool && it.writes }.toSet()
 }
 
 /** `jsonPrimitive.content` throws on JSON null; this returns null instead. */

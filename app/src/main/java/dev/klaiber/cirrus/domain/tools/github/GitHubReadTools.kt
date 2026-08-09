@@ -1,7 +1,6 @@
 package dev.klaiber.cirrus.domain.tools.github
 
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
-import dev.klaiber.cirrus.domain.tools.CirrusTool
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -10,45 +9,43 @@ import kotlinx.serialization.json.put
 import javax.inject.Inject
 
 /**
- * Tools that only read from GitHub.
+ * Read-only GitHub tools.
  *
- * Results are trimmed hard before they reach the model: a repository listing or a diff can run
- * to hundreds of kilobytes, and every byte of a tool result competes with the conversation for
- * context. Each tool returns the smallest useful shape and tells the model how to ask for more.
+ * These are what make the app useful against a codebase: list what exists, search it, and read
+ * specific files. They work against private repositories exactly as they do public ones — the
+ * token's scope decides, not the tool.
  */
 
-/** Lists what the token can see, so the model can name repositories without guessing. */
 class ListReposTool @Inject constructor(
     private val client: GitHubClient,
-) : CirrusTool {
+) : GitHubTool() {
 
-    override val name: String = "github_list_repos"
+    override val name = "github_list_repos"
 
     override val definition: JsonElement = functionSchema(
         name = name,
-        description = "List the GitHub repositories the user's token can access, most recently " +
-            "pushed first. Includes private repositories. Use this first when the user refers " +
-            "to a repository by a short or ambiguous name.",
+        description = "List the GitHub repositories the user can access, most recently pushed " +
+            "first. Includes private repositories. Use this when you need to find the right " +
+            "repository before reading or searching it.",
     ) {
-        integerProperty("limit", "How many to return (1-100, default 30).")
+        intParam("limit", "How many to return (1-100, default 30).")
     }
 
-    override suspend fun execute(arguments: JsonObject): String = runTool {
-        val limit = arguments.intOrNull("limit") ?: DEFAULT_LIMIT
-        val repos = client.listRepos(limit)
-        buildJsonObject {
+    override suspend fun run(arguments: JsonObject): String {
+        val repos = client.listRepos(arguments.int("limit") ?: DEFAULT_LIMIT)
+        return buildJsonObject {
             put("count", repos.size)
             put(
                 "repositories",
                 JsonArray(
                     repos.map { repo ->
                         buildJsonObject {
-                            put("full_name", repo.fullName)
+                            put("repo", repo.fullName)
                             put("private", repo.private)
                             put("default_branch", repo.defaultBranch)
                             repo.language?.let { put("language", it) }
-                            repo.description?.take(SHORT_TEXT)?.let { put("description", it) }
-                            put("open_issues", repo.openIssues)
+                            repo.description?.let { put("description", it.clip(200)) }
+                            if (repo.archived) put("archived", true)
                             repo.pushedAt?.let { put("pushed_at", it) }
                         }
                     },
@@ -62,35 +59,34 @@ class ListReposTool @Inject constructor(
     }
 }
 
-/** Full-text code search, the fastest way into an unfamiliar repository. */
 class SearchCodeTool @Inject constructor(
     private val client: GitHubClient,
-) : CirrusTool {
+) : GitHubTool() {
 
-    override val name: String = "github_search_code"
+    override val name = "github_search_code"
 
     override val definition: JsonElement = functionSchema(
         name = name,
-        description = "Search code across the user's GitHub repositories, including private " +
-            "ones. Supports GitHub's search qualifiers, so scope the query wherever possible: " +
-            "`repo:owner/name`, `path:src/`, `language:kotlin`, `filename:build.gradle.kts`. " +
-            "Returns file paths only - follow up with github_read_file to see the code.",
+        description = "Search code on GitHub and get back matching file paths. Supports GitHub's " +
+            "search qualifiers, so scope the query with repo:owner/name, path:, language: or " +
+            "filename: to get useful results. Returns locations, not file contents — follow up " +
+            "with github_read_file.",
+        required = listOf("query"),
     ) {
-        stringProperty(
+        stringParam(
             "query",
-            "The search query, e.g. `ChatEngine repo:klaibercore/cirrus language:kotlin`.",
-            required = true,
+            "Search query, e.g. \"ChatEngine repo:klaibercore/cirrus\" or " +
+                "\"fun respond language:kotlin repo:owner/name\".",
         )
-        integerProperty("limit", "How many results to return (1-100, default 20).")
+        intParam("limit", "How many results to return (1-100, default 20).")
     }
 
-    override suspend fun execute(arguments: JsonObject): String = runTool {
-        val query = arguments.stringOrNull("query")
-            ?: return@runTool missingArgument("query")
-        val limit = arguments.intOrNull("limit") ?: DEFAULT_LIMIT
+    override suspend fun run(arguments: JsonObject): String {
+        val query = arguments.string("query")
+            ?: return errorJson("missing required argument: query")
 
-        val response = client.searchCode(query, limit)
-        buildJsonObject {
+        val response = client.searchCode(query, arguments.int("limit") ?: DEFAULT_LIMIT)
+        return buildJsonObject {
             put("query", query)
             put("total_count", response.totalCount)
             put(
@@ -98,19 +94,12 @@ class SearchCodeTool @Inject constructor(
                 JsonArray(
                     response.items.map { item ->
                         buildJsonObject {
-                            put("repository", item.repository?.fullName ?: "")
+                            put("repo", item.repository?.fullName ?: "")
                             put("path", item.path)
                         }
                     },
                 ),
             )
-            if (response.totalCount > response.items.size) {
-                put(
-                    "note",
-                    "Showing ${response.items.size} of ${response.totalCount}. " +
-                        "Narrow the query for more relevant hits.",
-                )
-            }
         }.toString()
     }
 
@@ -119,114 +108,320 @@ class SearchCodeTool @Inject constructor(
     }
 }
 
-/** Reads one file. The workhorse: everything else exists to find the path to pass here. */
 class ReadFileTool @Inject constructor(
     private val client: GitHubClient,
-) : CirrusTool {
+) : GitHubTool() {
 
-    override val name: String = "github_read_file"
+    override val name = "github_read_file"
 
     override val definition: JsonElement = functionSchema(
         name = name,
-        description = "Read a single file from a GitHub repository, including private ones. " +
-            "Long files are truncated; pass start_line to page through the rest.",
+        description = "Read a single file from a GitHub repository. Works on private " +
+            "repositories the token can see. Long files are truncated, so prefer reading a " +
+            "specific file over browsing.",
+        required = listOf("repo", "path"),
     ) {
-        stringProperty("repo", "Repository as `owner/name`.", required = true)
-        stringProperty(
-            "path",
-            "Path within the repository, e.g. `app/src/main/Foo.kt`.",
-            required = true,
-        )
-        stringProperty("ref", "Branch, tag or commit SHA. Defaults to the default branch.")
-        integerProperty("start_line", "1-based line to start from, for paging through a long file.")
+        stringParam("repo", "Repository as \"owner/name\".")
+        stringParam("path", "Path within the repository, e.g. \"src/main/kotlin/App.kt\".")
+        stringParam("ref", "Branch, tag or commit SHA. Defaults to the default branch.")
     }
 
-    override suspend fun execute(arguments: JsonObject): String = runTool {
-        val target = arguments.repoOrNull() ?: return@runTool missingArgument("repo")
-        val path = arguments.stringOrNull("path") ?: return@runTool missingArgument("path")
-        val ref = arguments.stringOrNull("ref")
-        val startLine = (arguments.intOrNull("start_line") ?: 1).coerceAtLeast(1)
+    override suspend fun run(arguments: JsonObject): String {
+        val repo = arguments.repoRef().getOrElse { return errorJson(it.message.orEmpty()) }
+        val path = arguments.string("path")
+            ?: return errorJson("missing required argument: path")
 
-        val content = client.readFile(target.owner, target.repo, path, ref)
+        val content = client.readFile(repo.owner, repo.name, path, arguments.string("ref"))
+        if (content.type != "file") {
+            return errorJson("$path is a ${content.type}, not a file. Use github_list_directory.")
+        }
         val encoded = content.content
-            ?: return@runTool errorJson("$path is a directory. Use github_list_directory instead.")
-        if (content.encoding != null && content.encoding != "base64") {
-            return@runTool errorJson("Unsupported encoding: ${content.encoding}.")
-        }
+            ?: return errorJson("$path returned no content; it may be too large to read via the API.")
 
-        val text = GitHubClient.decodeContent(encoded)
-        // A NUL byte in decoded output is the classic binary-file signal.
-        if (text.any { it.code == 0 }) {
-            return@runTool errorJson("$path looks like a binary file.")
-        }
+        val text = runCatching { GitHubClient.decodeContent(encoded) }.getOrNull()
+            ?: return errorJson("$path does not appear to be a text file.")
 
-        val lines = text.lines()
-        val window = lines.drop(startLine - 1).take(MAX_LINES)
-        val lastLine = startLine - 1 + window.size
-
-        buildJsonObject {
-            put("repo", target.fullName)
+        return buildJsonObject {
+            put("repo", repo.toString())
             put("path", content.path)
-            put("total_lines", lines.size)
-            put("lines_shown", "$startLine-$lastLine")
-            put("content", window.joinToString("\n").take(MAX_CHARS))
-            if (lastLine < lines.size) {
-                put("note", "Truncated. Call again with start_line=${lastLine + 1} for more.")
-            }
+            put("size_bytes", content.size)
+            put("content", text.clip(MAX_FILE_CHARS))
         }.toString()
     }
 
     private companion object {
-        const val MAX_LINES = 600
-        const val MAX_CHARS = 40_000
+        const val MAX_FILE_CHARS = 40_000
     }
 }
 
-/** Directory listing, for orienting in a repository whose layout the model does not know. */
 class ListDirectoryTool @Inject constructor(
     private val client: GitHubClient,
-) : CirrusTool {
+) : GitHubTool() {
 
-    override val name: String = "github_list_directory"
+    override val name = "github_list_directory"
 
     override val definition: JsonElement = functionSchema(
         name = name,
-        description = "List the files and folders at a path in a GitHub repository. Use this to " +
-            "explore a repository's layout before reading files. Pass an empty path for the root.",
+        description = "List the files and folders at a path in a GitHub repository. Use it to " +
+            "orient yourself in an unfamiliar repository before reading files.",
+        required = listOf("repo"),
     ) {
-        stringProperty("repo", "Repository as `owner/name`.", required = true)
-        stringProperty("path", "Directory path. Omit or pass an empty string for the root.")
-        stringProperty("ref", "Branch, tag or commit SHA. Defaults to the default branch.")
+        stringParam("repo", "Repository as \"owner/name\".")
+        stringParam("path", "Directory path. Omit or use \"\" for the repository root.")
+        stringParam("ref", "Branch, tag or commit SHA. Defaults to the default branch.")
     }
 
-    override suspend fun execute(arguments: JsonObject): String = runTool {
-        val target = arguments.repoOrNull() ?: return@runTool missingArgument("repo")
-        val path = arguments.stringOrNull("path").orEmpty()
-        val ref = arguments.stringOrNull("ref")
+    override suspend fun run(arguments: JsonObject): String {
+        val repo = arguments.repoRef().getOrElse { return errorJson(it.message.orEmpty()) }
+        val path = arguments.string("path").orEmpty()
 
-        val entries = client.listDirectory(target.owner, target.repo, path, ref)
-        buildJsonObject {
-            put("repo", target.fullName)
-            put("path", path.ifBlank { "/" })
+        val entries = client.listDirectory(repo.owner, repo.name, path, arguments.string("ref"))
+        return buildJsonObject {
+            put("repo", repo.toString())
+            put("path", path.ifEmpty { "/" })
             put(
                 "entries",
                 JsonArray(
-                    entries.take(MAX_ENTRIES).map { entry ->
+                    entries.map { entry ->
                         buildJsonObject {
                             put("name", entry.name)
                             put("type", entry.type)
-                            if (entry.type == "file") put("size", entry.size)
+                            if (entry.type == "file") put("size_bytes", entry.size)
                         }
                     },
                 ),
             )
-            if (entries.size > MAX_ENTRIES) {
-                put("note", "${entries.size - MAX_ENTRIES} more entries not shown.")
-            }
+        }.toString()
+    }
+}
+
+class ListIssuesTool @Inject constructor(
+    private val client: GitHubClient,
+) : GitHubTool() {
+
+    override val name = "github_list_issues"
+
+    override val definition: JsonElement = functionSchema(
+        name = name,
+        description = "List issues in a repository. Note that GitHub treats pull requests as " +
+            "issues; entries marked is_pull_request are pull requests.",
+        required = listOf("repo"),
+    ) {
+        stringParam("repo", "Repository as \"owner/name\".")
+        enumParam("state", "Which issues to list. Defaults to open.", listOf("open", "closed", "all"))
+        stringParam("labels", "Comma-separated label names to filter by.")
+        intParam("limit", "How many to return (1-100, default 30).")
+    }
+
+    override suspend fun run(arguments: JsonObject): String {
+        val repo = arguments.repoRef().getOrElse { return errorJson(it.message.orEmpty()) }
+
+        val issues = client.listIssues(
+            owner = repo.owner,
+            repo = repo.name,
+            state = arguments.string("state") ?: "open",
+            labels = arguments.string("labels"),
+            limit = arguments.int("limit") ?: DEFAULT_LIMIT,
+        )
+        return buildJsonObject {
+            put("repo", repo.toString())
+            put(
+                "issues",
+                JsonArray(
+                    issues.map { issue ->
+                        buildJsonObject {
+                            put("number", issue.number)
+                            put("title", issue.title)
+                            put("state", issue.state)
+                            put("comments", issue.comments)
+                            issue.user?.let { put("author", it.login) }
+                            if (issue.labels.isNotEmpty()) {
+                                put("labels", issue.labels.joinToString(",") { it.name })
+                            }
+                            if (issue.pullRequest != null) put("is_pull_request", true)
+                        }
+                    },
+                ),
+            )
         }.toString()
     }
 
     private companion object {
-        const val MAX_ENTRIES = 200
+        const val DEFAULT_LIMIT = 30
+    }
+}
+
+class GetIssueTool @Inject constructor(
+    private val client: GitHubClient,
+) : GitHubTool() {
+
+    override val name = "github_get_issue"
+
+    override val definition: JsonElement = functionSchema(
+        name = name,
+        description = "Read one issue in full, including its body and discussion.",
+        required = listOf("repo", "number"),
+    ) {
+        stringParam("repo", "Repository as \"owner/name\".")
+        intParam("number", "Issue number.")
+    }
+
+    override suspend fun run(arguments: JsonObject): String {
+        val repo = arguments.repoRef().getOrElse { return errorJson(it.message.orEmpty()) }
+        val number = arguments.int("number")
+            ?: return errorJson("missing required argument: number")
+
+        val issue = client.getIssue(repo.owner, repo.name, number)
+        val comments = if (issue.comments > 0) {
+            client.listIssueComments(repo.owner, repo.name, number, MAX_COMMENTS)
+        } else {
+            emptyList()
+        }
+
+        return buildJsonObject {
+            put("repo", repo.toString())
+            put("number", issue.number)
+            put("title", issue.title)
+            put("state", issue.state)
+            issue.user?.let { put("author", it.login) }
+            put("body", (issue.body ?: "").clip(MAX_BODY_CHARS))
+            put("url", issue.htmlUrl)
+            put(
+                "comments",
+                JsonArray(
+                    comments.map { comment ->
+                        buildJsonObject {
+                            put("author", comment.user?.login ?: "")
+                            put("body", comment.body.clip(MAX_COMMENT_CHARS))
+                        }
+                    },
+                ),
+            )
+        }.toString()
+    }
+
+    private companion object {
+        const val MAX_COMMENTS = 30
+        const val MAX_BODY_CHARS = 8_000
+        const val MAX_COMMENT_CHARS = 2_000
+    }
+}
+
+class ListPullRequestsTool @Inject constructor(
+    private val client: GitHubClient,
+) : GitHubTool() {
+
+    override val name = "github_list_pull_requests"
+
+    override val definition: JsonElement = functionSchema(
+        name = name,
+        description = "List pull requests in a repository, most recently updated first.",
+        required = listOf("repo"),
+    ) {
+        stringParam("repo", "Repository as \"owner/name\".")
+        enumParam("state", "Which to list. Defaults to open.", listOf("open", "closed", "all"))
+        intParam("limit", "How many to return (1-100, default 30).")
+    }
+
+    override suspend fun run(arguments: JsonObject): String {
+        val repo = arguments.repoRef().getOrElse { return errorJson(it.message.orEmpty()) }
+
+        val pulls = client.listPulls(
+            owner = repo.owner,
+            repo = repo.name,
+            state = arguments.string("state") ?: "open",
+            limit = arguments.int("limit") ?: DEFAULT_LIMIT,
+        )
+        return buildJsonObject {
+            put("repo", repo.toString())
+            put(
+                "pull_requests",
+                JsonArray(
+                    pulls.map { pull ->
+                        buildJsonObject {
+                            put("number", pull.number)
+                            put("title", pull.title)
+                            put("state", pull.state)
+                            if (pull.draft) put("draft", true)
+                            pull.user?.let { put("author", it.login) }
+                            pull.head?.let { put("head", it.ref) }
+                            pull.base?.let { put("base", it.ref) }
+                        }
+                    },
+                ),
+            )
+        }.toString()
+    }
+
+    private companion object {
+        const val DEFAULT_LIMIT = 30
+    }
+}
+
+class GetPullRequestTool @Inject constructor(
+    private val client: GitHubClient,
+) : GitHubTool() {
+
+    override val name = "github_get_pull_request"
+
+    override val definition: JsonElement = functionSchema(
+        name = name,
+        description = "Read a pull request: its description, and the diff of every changed file. " +
+            "This is the tool to use before reviewing. Large diffs are truncated per file, so " +
+            "read specific files with github_read_file if you need full context.",
+        required = listOf("repo", "number"),
+    ) {
+        stringParam("repo", "Repository as \"owner/name\".")
+        intParam("number", "Pull request number.")
+        stringParam("include_diff", "\"false\" to skip the per-file patches. Defaults to true.")
+    }
+
+    override suspend fun run(arguments: JsonObject): String {
+        val repo = arguments.repoRef().getOrElse { return errorJson(it.message.orEmpty()) }
+        val number = arguments.int("number")
+            ?: return errorJson("missing required argument: number")
+        val includeDiff = arguments.string("include_diff")?.lowercase() != "false"
+
+        val pull = client.getPull(repo.owner, repo.name, number)
+        val files = client.listPullFiles(repo.owner, repo.name, number, MAX_FILES)
+
+        return buildJsonObject {
+            put("repo", repo.toString())
+            put("number", pull.number)
+            put("title", pull.title)
+            put("state", pull.state)
+            if (pull.draft) put("draft", true)
+            pull.user?.let { put("author", it.login) }
+            pull.head?.let { put("head", it.ref) }
+            pull.base?.let { put("base", it.ref) }
+            put("additions", pull.additions)
+            put("deletions", pull.deletions)
+            put("changed_files", pull.changedFiles)
+            put("body", (pull.body ?: "").clip(MAX_BODY_CHARS))
+            put("url", pull.htmlUrl)
+            put(
+                "files",
+                JsonArray(
+                    files.map { file ->
+                        buildJsonObject {
+                            put("path", file.filename)
+                            put("status", file.status)
+                            put("additions", file.additions)
+                            put("deletions", file.deletions)
+                            if (includeDiff) {
+                                // Binaries and very large files come back with no patch at all.
+                                put("patch", (file.patch ?: "[no diff available]").clip(MAX_PATCH_CHARS))
+                            }
+                        }
+                    },
+                ),
+            )
+        }.toString()
+    }
+
+    private companion object {
+        const val MAX_FILES = 50
+        const val MAX_BODY_CHARS = 8_000
+        const val MAX_PATCH_CHARS = 12_000
     }
 }

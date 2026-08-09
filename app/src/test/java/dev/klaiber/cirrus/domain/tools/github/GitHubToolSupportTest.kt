@@ -1,5 +1,7 @@
 package dev.klaiber.cirrus.domain.tools.github
 
+import dev.klaiber.cirrus.data.remote.github.GitHubException
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -17,53 +19,46 @@ class GitHubToolSupportTest {
 
     @Test
     fun `repo argument accepts owner slash name`() {
-        val target = args("""{"repo":"klaibercore/cirrus"}""").repoOrNull()
+        val target = args("""{"repo":"klaibercore/cirrus"}""").repoRef().getOrNull()
         assertEquals("klaibercore", target?.owner)
-        assertEquals("cirrus", target?.repo)
-        assertEquals("klaibercore/cirrus", target?.fullName)
+        assertEquals("cirrus", target?.name)
+        assertEquals("klaibercore/cirrus", target?.toString())
     }
 
     @Test
     fun `repo argument tolerates a pasted url`() {
         // Models paste the URL they were given rather than reformatting it.
-        val target = args("""{"repo":"https://github.com/klaibercore/cirrus"}""").repoOrNull()
+        val target = args("""{"repo":"https://github.com/klaibercore/cirrus"}""").repoRef().getOrNull()
         assertEquals("klaibercore", target?.owner)
-        assertEquals("cirrus", target?.repo)
+        assertEquals("cirrus", target?.name)
 
-        val dotGit = args("""{"repo":"klaibercore/cirrus.git"}""").repoOrNull()
-        assertEquals("cirrus", dotGit?.repo)
+        val dotGit = args("""{"repo":"klaibercore/cirrus.git"}""").repoRef().getOrNull()
+        assertEquals("cirrus", dotGit?.name)
     }
 
     @Test
     fun `repo argument rejects a bare name`() {
-        assertNull(args("""{"repo":"cirrus"}""").repoOrNull())
-        assertNull(args("""{"repo":""}""").repoOrNull())
-        assertNull(args("{}").repoOrNull())
+        assertTrue(args("""{"repo":"cirrus"}""").repoRef().isFailure)
+        assertTrue(args("""{"repo":""}""").repoRef().isFailure)
+        assertTrue(args("{}").repoRef().isFailure)
     }
 
     @Test
     fun `numbers are read whether sent as json numbers or strings`() {
         // Small models routinely quote their numeric arguments.
-        assertEquals(42, args("""{"number":42}""").intOrNull("number"))
-        assertEquals(42, args("""{"number":"42"}""").intOrNull("number"))
-        assertEquals(42, args("""{"number":" 42 "}""").intOrNull("number"))
-        assertNull(args("""{"number":"not a number"}""").intOrNull("number"))
-        assertNull(args("""{"number":null}""").intOrNull("number"))
-        assertNull(args("{}").intOrNull("number"))
-    }
-
-    @Test
-    fun `booleans survive the same treatment`() {
-        assertEquals(true, args("""{"flag":true}""").booleanOrNull("flag"))
-        assertEquals(false, args("""{"flag":"false"}""").booleanOrNull("flag"))
-        assertNull(args("""{"flag":"maybe"}""").booleanOrNull("flag"))
+        assertEquals(42, args("""{"number":42}""").int("number"))
+        assertEquals(42, args("""{"number":"42"}""").int("number"))
+        assertEquals(42, args("""{"number":" 42 "}""").int("number"))
+        assertNull(args("""{"number":"not a number"}""").int("number"))
+        assertNull(args("""{"number":null}""").int("number"))
+        assertNull(args("{}").int("number"))
     }
 
     @Test
     fun `blank strings read as absent`() {
-        assertNull(args("""{"path":"   "}""").stringOrNull("path"))
-        assertNull(args("""{"path":null}""").stringOrNull("path"))
-        assertEquals("src", args("""{"path":"src"}""").stringOrNull("path"))
+        assertNull(args("""{"path":"   "}""").string("path"))
+        assertNull(args("""{"path":null}""").string("path"))
+        assertEquals("src", args("""{"path":"src"}""").string("path"))
     }
 
     @Test
@@ -71,9 +66,10 @@ class GitHubToolSupportTest {
         val schema = functionSchema(
             name = "github_read_file",
             description = "Read a file.",
+            required = listOf("repo"),
         ) {
-            stringProperty("repo", "Repository.", required = true)
-            integerProperty("start_line", "Where to start.")
+            stringParam("repo", "Repository.")
+            intParam("start_line", "Where to start.")
         }.jsonObject
 
         assertEquals("function", schema["type"]?.jsonPrimitive?.content)
@@ -93,14 +89,27 @@ class GitHubToolSupportTest {
     }
 
     @Test
-    fun `runTool turns a failure into readable json rather than throwing`() = kotlinx.coroutines.test.runTest {
-        val result = runTool { throw IllegalStateException("boom") }
+    fun `execute turns a github failure into readable json rather than throwing`() = runTest {
+        val tool = object : GitHubTool() {
+            override val name = "test_tool"
+            override val definition = functionSchema(name, "Test.") {}
+            override suspend fun run(arguments: JsonObject): String =
+                throw GitHubException.NotFound("owner/repo")
+        }
+        val result = tool.execute(args("{}"))
         assertTrue(result.contains("\"error\""))
-        assertTrue(result.contains("boom"))
+        assertTrue(result.contains("Not found"))
     }
 
     @Test
-    fun `missingArgument names the argument`() {
-        assertTrue(missingArgument("repo").contains("repo"))
+    fun `errorJson names the problem`() {
+        assertTrue(errorJson("missing required argument: repo").contains("repo"))
+    }
+
+    @Test
+    fun `clip truncates long results and says so`() {
+        val clipped = "abcdefghij".clip(5)
+        assertTrue(clipped.startsWith("abcde"))
+        assertTrue(clipped.contains("truncated"))
     }
 }
