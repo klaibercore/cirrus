@@ -55,6 +55,18 @@ class ChatUiStateTest {
     }
 
     @Test
+    fun `composerText appends dictation still being transcribed`() {
+        val state = ChatUiState(conversation = conversation, input = "hello", voicePartial = " world")
+        assertEquals("hello world", state.composerText)
+    }
+
+    @Test
+    fun `canSend - unfinalised dictation alone is enough`() {
+        val state = ChatUiState(conversation = conversation, voicePartial = "hello")
+        assertTrue(state.canSend)
+    }
+
+    @Test
     fun `title and model fall back to settings`() {
         assertEquals("My thread", ChatUiState(conversation = conversation).title)
         assertEquals("New chat", ChatUiState().title)

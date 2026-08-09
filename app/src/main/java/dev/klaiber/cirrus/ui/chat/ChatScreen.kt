@@ -1,5 +1,6 @@
 package dev.klaiber.cirrus.ui.chat
 
+import android.Manifest
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -62,6 +63,7 @@ import dev.klaiber.cirrus.ui.chat.components.MessageItem
 import dev.klaiber.cirrus.ui.chat.components.ModelPickerSheet
 import dev.klaiber.cirrus.ui.chat.components.ParametersSheet
 import dev.klaiber.cirrus.ui.util.rememberClipboard
+import dev.klaiber.cirrus.ui.voice.rememberVoiceInput
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +77,7 @@ fun ChatScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val isRefreshingModels by viewModel.isRefreshingModels.collectAsStateWithLifecycle()
+    val isLoadingModelDetails by viewModel.isLoadingModelDetails.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboard = rememberClipboard()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -89,6 +92,23 @@ fun ChatScreen(
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let(viewModel::attach) }
+
+    val voice = rememberVoiceInput(
+        preferOnDevice = state.settings.preferOnDeviceRecognition,
+        onPartial = viewModel::onVoicePartial,
+        onFinal = viewModel::onVoiceFinal,
+        onFailure = viewModel::showError,
+    )
+    // Granting the permission is itself the "yes, start listening" answer, so start right away.
+    val micPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            voice.start()
+        } else {
+            viewModel.showError("Cirrus needs microphone access to dictate.")
+        }
+    }
 
     // Content shared in from another app prefills the composer exactly once.
     LaunchedEffect(sharedPayload) {
@@ -217,19 +237,33 @@ fun ChatScreen(
                     ApiKeyPrompt(onOpenSettings = onOpenSettings)
                 } else {
                     Composer(
-                        input = state.input,
+                        input = state.composerText,
                         attachments = state.pendingAttachments,
                         isGenerating = state.isGenerating,
                         canSend = state.canSend,
                         toolsEnabled = state.toolsEnabled,
                         thinkMode = state.params.thinkMode,
                         sendOnEnter = state.settings.sendOnEnter,
+                        voiceAvailable = state.settings.voiceInputEnabled && voice.isAvailable,
+                        isListening = voice.isListening,
+                        voiceLevel = voice.level,
+                        isVoiceOnDevice = voice.isOnDevice,
                         onInputChange = viewModel::onInputChange,
-                        onSend = viewModel::send,
+                        onSend = {
+                            voice.stop()
+                            viewModel.send()
+                        },
                         onStop = viewModel::stop,
                         onAttach = { filePicker.launch(arrayOf("image/*", "text/*", "application/json")) },
                         onRemoveAttachment = viewModel::removeAttachment,
                         onToggleTools = { viewModel.setToolsEnabled(!state.toolsEnabled) },
+                        onToggleVoice = {
+                            when {
+                                voice.isListening -> voice.stop()
+                                voice.hasPermission() -> voice.start()
+                                else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
                         onOpenParameters = { showParameters = true },
                     )
                 }
@@ -286,6 +320,7 @@ fun ChatScreen(
             models = state.availableModels,
             selectedModel = state.model,
             isRefreshing = isRefreshingModels,
+            isLoadingDetails = isLoadingModelDetails,
             onSelect = viewModel::setModel,
             onRefresh = viewModel::refreshModels,
             onDismiss = { showModelPicker = false },

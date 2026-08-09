@@ -61,6 +61,8 @@ class ChatViewModel @Inject constructor(
 
     private data class EditorState(
         val input: String = "",
+        /** Live dictation not yet finalised by the recogniser; shown but not yet committed. */
+        val voicePartial: String = "",
         val attachments: List<Attachment> = emptyList(),
         val error: String? = null,
     )
@@ -101,6 +103,7 @@ class ChatViewModel @Inject constructor(
             messages = messages,
             isGenerating = isGenerating,
             input = editorState.input,
+            voicePartial = editorState.voicePartial,
             pendingAttachments = editorState.attachments,
             settings = settings,
             availableModels = models,
@@ -111,6 +114,9 @@ class ChatViewModel @Inject constructor(
 
     /** Exposed separately from [uiState] so a refresh spinner cannot recompose the transcript. */
     val isRefreshingModels: StateFlow<Boolean> = modelRepository.isRefreshing
+
+    /** True while `/api/show` is still filling in capabilities behind an already-visible list. */
+    val isLoadingModelDetails: StateFlow<Boolean> = modelRepository.isLoadingDetails
 
     init {
         viewModelScope.launch { modelRepository.refreshIfEmpty() }
@@ -142,9 +148,25 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun onInputChange(value: String) = editor.update { it.copy(input = value) }
+    /** Typing commits whatever dictation was on screen, since the field shows both as one string. */
+    fun onInputChange(value: String) = editor.update { it.copy(input = value, voicePartial = "") }
 
     fun dismissError() = editor.update { it.copy(error = null) }
+
+    fun showError(message: String) = editor.update { it.copy(error = message) }
+
+    /** A guess from the recogniser, replaced wholesale by the next partial or final result. */
+    fun onVoicePartial(text: String) = editor.update {
+        it.copy(voicePartial = joinDictation(it.input, text))
+    }
+
+    fun onVoiceFinal(text: String) = editor.update {
+        it.copy(input = it.input + joinDictation(it.input, text), voicePartial = "")
+    }
+
+    /** Utterances arrive without surrounding whitespace, so supply the gap between them. */
+    private fun joinDictation(existing: String, addition: String): String =
+        if (existing.isEmpty() || existing.last().isWhitespace()) addition else " $addition"
 
     fun attach(uri: Uri) {
         viewModelScope.launch {
@@ -169,7 +191,7 @@ class ChatViewModel @Inject constructor(
     fun send() {
         val state = uiState.value
         if (!state.canSend) return
-        val text = state.input.trim()
+        val text = state.composerText.trim()
         val attachments = state.pendingAttachments
 
         editor.update { EditorState() }
@@ -441,18 +463,53 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Keeps the thread title in step with what the conversation has become.
+     *
+     * A long thread drifts away from its opening question, so the title is re-summarised as it
+     * grows — but at most once every [RETITLE_INTERVAL_MS], because each pass is an extra
+     * request. A title the user typed themselves is never touched.
+     */
     private suspend fun maybeGenerateTitle(conversationId: String) {
         val settings = settingsRepository.current.value
         if (!settings.autoTitleConversations) return
         val conversation = conversationRepository.getConversation(conversationId) ?: return
-        if (conversation.title != "New chat") return
 
+        val now = System.currentTimeMillis()
+        val lastTitledAt = conversation.autoTitledAt
+        val shouldTitle = when {
+            // Still the placeholder: name it immediately, no waiting.
+            lastTitledAt == null -> conversation.title == DEFAULT_TITLE
+            else -> now - lastTitledAt >= RETITLE_INTERVAL_MS
+        }
+        if (!shouldTitle) return
+
+        val transcript = summarisableTranscript(conversationId) ?: return
+        chatEngine.suggestTitle(conversation.model, transcript)?.let { title ->
+            conversationRepository.applyAutoTitle(conversationId, title, now)
+        }
+    }
+
+    /**
+     * A digest of the conversation for the titler: the opening exchange, which sets the topic,
+     * plus the latest turns, which show where it has got to. The middle is dropped — it is the
+     * least informative part and the most expensive to send.
+     */
+    private suspend fun summarisableTranscript(conversationId: String): String? {
         val messages = conversationRepository.getMessages(conversationId)
-        val firstUser = messages.firstOrNull { it.role == Role.USER }?.content ?: return
-        val firstAssistant = messages.firstOrNull { it.role == Role.ASSISTANT }?.content.orEmpty()
+            .filter { it.role == Role.USER || it.role == Role.ASSISTANT }
+            .filter { it.errorMessage == null && it.content.isNotBlank() }
+        if (messages.isEmpty()) return null
 
-        chatEngine.suggestTitle(conversation.model, firstUser, firstAssistant)?.let { title ->
-            conversationRepository.rename(conversationId, title)
+        val excerpt = if (messages.size <= TITLE_CONTEXT_MESSAGES) {
+            messages
+        } else {
+            messages.take(TITLE_HEAD_MESSAGES) +
+                messages.takeLast(TITLE_CONTEXT_MESSAGES - TITLE_HEAD_MESSAGES)
+        }
+        return excerpt.joinToString("\n\n") { message ->
+            val speaker = if (message.role == Role.USER) "User" else "Assistant"
+            "$speaker: ${message.content.take(TITLE_MESSAGE_CHARS)}"
         }
     }
 
@@ -475,5 +532,16 @@ class ChatViewModel @Inject constructor(
     private companion object {
         const val ARG_CONVERSATION_ID = "conversationId"
         const val PERSIST_INTERVAL_MS = 600L
+        const val DEFAULT_TITLE = "New chat"
+
+        /**
+         * How long an auto-title stands before the thread is summarised again. Long enough that
+         * a busy half-hour of chat costs one extra request, not one per turn.
+         */
+        const val RETITLE_INTERVAL_MS = 30 * 60 * 1000L
+
+        const val TITLE_CONTEXT_MESSAGES = 8
+        const val TITLE_HEAD_MESSAGES = 2
+        const val TITLE_MESSAGE_CHARS = 400
     }
 }

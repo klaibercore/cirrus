@@ -301,7 +301,10 @@ class ChatEngineTest {
                 )
                 .build()
         )
-        val title = engine.suggestTitle("qwen3", "What is quantum computing?", "It is a field.")
+        val title = engine.suggestTitle(
+            model = "qwen3",
+            transcript = "User: What is quantum computing?\n\nAssistant: It is a field.",
+        )
         assertEquals("Quantum Computing", title)
     }
 

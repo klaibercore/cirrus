@@ -68,8 +68,18 @@ interface ConversationDao {
     @Update
     suspend fun update(conversation: ConversationEntity)
 
-    @Query("UPDATE conversations SET title = :title, updatedAt = :now WHERE id = :id")
+    /** A hand-typed title clears [ConversationEntity.autoTitledAt] so nothing overwrites it. */
+    @Query("UPDATE conversations SET title = :title, autoTitledAt = NULL, updatedAt = :now WHERE id = :id")
     suspend fun rename(id: String, title: String, now: Long)
+
+    /**
+     * Writes a model-generated title.
+     *
+     * `updatedAt` is deliberately left alone: re-titling is bookkeeping, and touching it would
+     * reshuffle the drawer, which is sorted by that column.
+     */
+    @Query("UPDATE conversations SET title = :title, autoTitledAt = :now WHERE id = :id")
+    suspend fun applyAutoTitle(id: String, title: String, now: Long)
 
     @Query("UPDATE conversations SET pinned = :pinned, updatedAt = :now WHERE id = :id")
     suspend fun setPinned(id: String, pinned: Boolean, now: Long)

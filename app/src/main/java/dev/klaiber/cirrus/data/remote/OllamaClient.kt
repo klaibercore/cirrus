@@ -3,6 +3,8 @@ package dev.klaiber.cirrus.data.remote
 import dev.klaiber.cirrus.data.remote.dto.ChatChunkDto
 import dev.klaiber.cirrus.data.remote.dto.ChatRequestDto
 import dev.klaiber.cirrus.data.remote.dto.ErrorResponseDto
+import dev.klaiber.cirrus.data.remote.dto.ShowRequestDto
+import dev.klaiber.cirrus.data.remote.dto.ShowResponseDto
 import dev.klaiber.cirrus.data.remote.dto.TagModelDto
 import dev.klaiber.cirrus.data.remote.dto.TagsResponseDto
 import dev.klaiber.cirrus.data.remote.dto.WebFetchRequestDto
@@ -90,6 +92,17 @@ class OllamaClient @Inject constructor(
         // `/api/tags` is readable without a key on the cloud host, so no credential check here.
         val call = httpClient.newCall(buildRequest("/api/tags", body = null))
         executeForJson(call, TagsResponseDto.serializer()).models
+    }
+
+    /**
+     * Reads one model's manifest, whose `capabilities` array is the only authoritative answer to
+     * "can this model see images / call tools / think".
+     */
+    suspend fun showModel(model: String): ShowResponseDto = withContext(Dispatchers.IO) {
+        // Like `/api/tags`, this is metadata; let the caller's error handling deal with a 401.
+        val payload = json.encodeToString(ShowRequestDto.serializer(), ShowRequestDto(model))
+        val call = httpClient.newCall(buildRequest("/api/show", payload))
+        executeForJson(call, ShowResponseDto.serializer())
     }
 
     suspend fun webSearch(query: String, maxResults: Int): WebSearchResponseDto =

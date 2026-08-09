@@ -92,6 +92,26 @@ data class ModelDetailsDto(
 )
 
 @Serializable
+data class ShowRequestDto(
+    val model: String,
+)
+
+/**
+ * Wire model for `POST /api/show`, trimmed to the fields the picker needs.
+ *
+ * [modelInfo] is a loose map because its keys are architecture-prefixed
+ * (`qwen3.context_length`, `llama.context_length`, ...) and vary per model.
+ */
+@Serializable
+data class ShowResponseDto(
+    val capabilities: List<String> = emptyList(),
+    val details: ModelDetailsDto? = null,
+    @SerialName("model_info") val modelInfo: JsonObject? = null,
+    @SerialName("remote_model") val remoteModel: String? = null,
+    @SerialName("remote_host") val remoteHost: String? = null,
+)
+
+@Serializable
 data class WebSearchRequestDto(
     val query: String,
     @SerialName("max_results") val maxResults: Int? = null,

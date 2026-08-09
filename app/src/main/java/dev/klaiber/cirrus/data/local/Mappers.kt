@@ -40,6 +40,7 @@ class EntityMapper(private val json: Json) {
         archived = entity.archived,
         forkedFromConversationId = entity.forkedFromConversationId,
         forkedFromMessageId = entity.forkedFromMessageId,
+        autoTitledAt = entity.autoTitledAt,
     )
 
     fun toEntity(model: Conversation): ConversationEntity = ConversationEntity(
@@ -55,6 +56,7 @@ class EntityMapper(private val json: Json) {
         archived = model.archived,
         forkedFromConversationId = model.forkedFromConversationId,
         forkedFromMessageId = model.forkedFromMessageId,
+        autoTitledAt = model.autoTitledAt,
     )
 
     fun toDomain(row: ConversationSummaryRow): ConversationSummary = ConversationSummary(

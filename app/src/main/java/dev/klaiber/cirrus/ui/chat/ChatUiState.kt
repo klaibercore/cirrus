@@ -12,6 +12,8 @@ data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isGenerating: Boolean = false,
     val input: String = "",
+    /** Dictation the recogniser has not finalised yet; rendered after [input]. */
+    val voicePartial: String = "",
     val pendingAttachments: List<Attachment> = emptyList(),
     val settings: AppSettings = AppSettings(),
     val availableModels: List<ModelInfo> = emptyList(),
@@ -32,11 +34,14 @@ data class ChatUiState(
 
     val modelInfo: ModelInfo? get() = availableModels.firstOrNull { it.name == model }
 
+    /** What the composer shows: typed text plus any dictation still being transcribed. */
+    val composerText: String get() = input + voicePartial
+
     val canSend: Boolean
         get() = !isGenerating &&
             !needsApiKey &&
             model.isNotBlank() &&
-            (input.isNotBlank() || pendingAttachments.isNotEmpty())
+            (composerText.isNotBlank() || pendingAttachments.isNotEmpty())
 
     val isEmpty: Boolean get() = messages.isEmpty() && !isGenerating
 }

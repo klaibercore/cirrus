@@ -55,6 +55,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.klaiber.cirrus.domain.model.ThemeMode
+import dev.klaiber.cirrus.ui.components.HelpBadge
+import dev.klaiber.cirrus.ui.components.HelpTooltip
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,18 +117,27 @@ fun SettingsScreen(
             SwitchRow(
                 title = "Web tools by default",
                 subtitle = "Enable web search and page fetch for new conversations",
+                help = "Lets the model run web searches and fetch pages mid-answer. It decides " +
+                    "when to call them, and each call is an extra round trip to your host. You " +
+                    "can still flip this per conversation from the composer.",
                 checked = state.settings.toolsEnabledByDefault,
                 onCheckedChange = viewModel::setToolsDefault,
             )
             SwitchRow(
                 title = "Auto-title conversations",
-                subtitle = "Ask the model for a short title after the first reply",
+                subtitle = "Name threads from their content, and keep the name current",
+                help = "Cirrus names a new thread from its first exchange, then re-summarises " +
+                    "it as the conversation grows — at most once every 30 minutes, so a long " +
+                    "session costs a handful of short requests rather than one per turn. " +
+                    "Rename a thread yourself and it is never overwritten.",
                 checked = state.settings.autoTitleConversations,
                 onCheckedChange = viewModel::setAutoTitle,
             )
             SwitchRow(
                 title = "Send on enter",
                 subtitle = "Otherwise enter inserts a newline and you tap send",
+                help = "Turns the keyboard's return key into send. Handy for short back-and-forth " +
+                    "chats, awkward when you write multi-line prompts.",
                 checked = state.settings.sendOnEnter,
                 onCheckedChange = viewModel::setSendOnEnter,
             )
@@ -137,11 +148,37 @@ fun SettingsScreen(
                 } else {
                     "Sending the last ${state.settings.contextMessageLimit} messages"
                 },
+                help = "How much of the thread is replayed with every turn. A smaller number " +
+                    "means cheaper, faster requests but a shorter memory: the model literally " +
+                    "cannot see what fell outside the window. \"All\" sends everything and lets " +
+                    "the model's own context window do the truncating.",
                 value = state.settings.contextMessageLimit.toFloat(),
                 range = 0f..100f,
                 steps = 19,
                 format = { if (it.toInt() == 0) "all" else it.toInt().toString() },
                 onChange = { viewModel.setContextMessageLimit(it.toInt()) },
+            )
+
+            SectionHeader("Voice")
+            SwitchRow(
+                title = "Voice input",
+                subtitle = "Show a microphone in the composer",
+                help = "Dictate instead of typing. Android's speech recogniser transcribes what " +
+                    "you say straight into the message box, where you can edit it before " +
+                    "sending. Ollama's chat API carries no audio field, so what reaches the " +
+                    "model is the transcript, not the recording.",
+                checked = state.settings.voiceInputEnabled,
+                onCheckedChange = viewModel::setVoiceInputEnabled,
+            )
+            SwitchRow(
+                title = "Keep dictation on device",
+                subtitle = "Use the offline recogniser when one is installed",
+                help = "Prefers Android's on-device recogniser, so your voice never leaves the " +
+                    "phone. If the device has no offline model for your language, Cirrus falls " +
+                    "back to the network recogniser. Needs Android 13 or newer.",
+                checked = state.settings.preferOnDeviceRecognition,
+                onCheckedChange = viewModel::setPreferOnDeviceRecognition,
+                enabled = state.settings.voiceInputEnabled,
             )
 
             SectionHeader("Appearance")
@@ -152,12 +189,17 @@ fun SettingsScreen(
             SwitchRow(
                 title = "Dynamic color",
                 subtitle = "Follow the system wallpaper palette on Android 12+",
+                help = "Recolours Cirrus from your wallpaper's palette. Off uses the app's own " +
+                    "colours, which stay the same whatever your home screen looks like.",
                 checked = state.settings.useDynamicColor,
                 onCheckedChange = viewModel::setDynamicColor,
             )
             SwitchRow(
                 title = "Render markdown",
                 subtitle = "Turn off to read raw model output verbatim",
+                help = "Formats replies: headings, lists, tables, and syntax-highlighted code " +
+                    "blocks. Off shows exactly the characters the model produced, asterisks and " +
+                    "backticks included — useful when you are debugging a prompt's formatting.",
                 checked = state.settings.renderMarkdown,
                 onCheckedChange = viewModel::setRenderMarkdown,
             )
@@ -166,12 +208,18 @@ fun SettingsScreen(
             SwitchRow(
                 title = "Show generation stats",
                 subtitle = "Tokens per second, token counts and latency under each reply",
+                help = "Adds a line under each reply with output speed, prompt and response " +
+                    "token counts, and time to the first token. The numbers come from the " +
+                    "server's own timings, so they measure the host, not your connection.",
                 checked = state.settings.showStats,
                 onCheckedChange = viewModel::setShowStats,
             )
             SwitchRow(
                 title = "Developer mode",
                 subtitle = "Capture and display the exact request JSON for every turn",
+                help = "Stores the exact JSON body sent for each turn and shows it under the " +
+                    "reply — system prompt, context window, options and tool definitions " +
+                    "included. Nothing extra is sent; it only records what already went out.",
                 checked = state.settings.developerMode,
                 onCheckedChange = viewModel::setDeveloperMode,
             )
@@ -180,6 +228,8 @@ fun SettingsScreen(
             StepperRow(
                 title = "Search results",
                 subtitle = "How many results web_search returns per call",
+                help = "More results give the model more to work with, but each one is pasted " +
+                    "into the conversation and eats context the model could be using to think.",
                 value = state.settings.webSearchMaxResults.toFloat(),
                 range = 1f..10f,
                 steps = 8,
@@ -189,6 +239,9 @@ fun SettingsScreen(
             StepperRow(
                 title = "Max tool rounds",
                 subtitle = "Upper bound on back-and-forth tool calls in one turn",
+                help = "A model can search, read the results, then search again. This caps how " +
+                    "many of those rounds one turn may take before Cirrus stops the loop, so a " +
+                    "model that keeps searching forever cannot run up your bill.",
                 value = state.settings.maxToolIterations.toFloat(),
                 range = 1f..20f,
                 steps = 18,
@@ -271,6 +324,12 @@ private fun ApiKeyField(
     var visible by remember { mutableStateOf(false) }
 
     Column {
+        LabelWithHelp(
+            label = "API key",
+            help = "Your Ollama API key, needed for the hosted API at ollama.com. It is stored " +
+                "only on this device, encrypted with a key that lives in the Android Keystore " +
+                "and never leaves it. A local Ollama instance usually needs no key at all.",
+        )
         OutlinedTextField(
             value = draft,
             onValueChange = { draft = it },
@@ -384,6 +443,12 @@ private fun BaseUrlField(baseUrl: String, onSave: (String) -> Unit) {
     var draft by remember(baseUrl) { mutableStateOf(baseUrl) }
 
     Column {
+        LabelWithHelp(
+            label = "Host",
+            help = "Where every request goes. Use https://ollama.com for the hosted API, or " +
+                "http://<address>:11434 for an Ollama instance on your own machine — your " +
+                "hardware, your models, no key. A trailing /api is stripped automatically.",
+        )
         OutlinedTextField(
             value = draft,
             onValueChange = { draft = it },
@@ -430,6 +495,12 @@ private fun ModelDropdownRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            HelpBadge(
+                title = "Default model",
+                text = "The model new conversations start with. Existing threads keep whatever " +
+                    "they were created with, so changing this never rewrites your history. Pick " +
+                    "per conversation from the model name in the title bar.",
+            )
         }
         if (expanded) {
             Column(Modifier.padding(bottom = 8.dp)) {
@@ -467,41 +538,82 @@ private fun ModelDropdownRow(
 
 @Composable
 private fun ThemeSelector(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-        ThemeMode.entries.forEachIndexed { index, mode ->
-            SegmentedButton(
-                selected = selected == mode,
-                onClick = { onSelect(mode) },
-                shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
-                label = { Text(mode.label, style = MaterialTheme.typography.labelMedium) },
-            )
+    Column {
+        LabelWithHelp(
+            label = "Theme",
+            help = "\"Follow system\" tracks Android's own light/dark setting, including any " +
+                "schedule or battery-saver rule you have set. The other two pin Cirrus " +
+                "regardless of what the rest of the phone is doing.",
+        )
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            ThemeMode.entries.forEachIndexed { index, mode ->
+                SegmentedButton(
+                    selected = selected == mode,
+                    onClick = { onSelect(mode) },
+                    shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
+                    label = { Text(mode.label, style = MaterialTheme.typography.labelMedium) },
+                )
+            }
         }
     }
 }
 
+/** Caption above a field, with the question mark that explains it. */
+@Composable
+private fun LabelWithHelp(label: String, help: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(bottom = 4.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        HelpBadge(title = label, text = help)
+    }
+}
+
+/**
+ * A setting with its own explanation.
+ *
+ * [subtitle] says what the switch does in a handful of words; [help] is the paragraph behind the
+ * question mark, for the "…but what does that actually change?" question the subtitle cannot
+ * answer without turning the list into an essay.
+ */
 @Composable
 private fun SwitchRow(
     title: String,
     subtitle: String,
+    help: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    val contentAlpha = if (enabled) 1f else DISABLED_ALPHA
+
+    HelpTooltip(title = title, text = help) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled) { onCheckedChange(!checked) }
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+                )
+            }
+            HelpBadge(title = title, text = help)
+            Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -509,33 +621,40 @@ private fun SwitchRow(
 private fun StepperRow(
     title: String,
     subtitle: String,
+    help: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     steps: Int,
     format: (Float) -> String,
     onChange: (Float) -> Unit,
 ) {
-    Column(Modifier.padding(vertical = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge)
+    HelpTooltip(title = title, text = help) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                HelpBadge(title = title, text = help)
                 Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = format(value),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
-            Text(
-                text = format(value),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+            Slider(
+                value = value,
+                onValueChange = onChange,
+                valueRange = range,
+                steps = steps,
             )
         }
-        Slider(
-            value = value,
-            onValueChange = onChange,
-            valueRange = range,
-            steps = steps,
-        )
     }
 }
+
+/** Matches Material's disabled content opacity without pulling in the full token set. */
+private const val DISABLED_ALPHA = 0.38f

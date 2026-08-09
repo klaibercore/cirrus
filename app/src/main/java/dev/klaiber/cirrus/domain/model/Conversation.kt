@@ -14,6 +14,11 @@ data class Conversation(
     /** Set when this conversation was branched off another one at a specific message. */
     val forkedFromConversationId: String? = null,
     val forkedFromMessageId: String? = null,
+    /**
+     * When the model last wrote [title]. Null means the title belongs to the user — hand-typed
+     * or still the placeholder — and auto-titling must not touch it.
+     */
+    val autoTitledAt: Long? = null,
 ) {
     val isFork: Boolean get() = forkedFromConversationId != null
 }

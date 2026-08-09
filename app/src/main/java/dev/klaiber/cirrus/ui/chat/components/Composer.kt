@@ -1,5 +1,6 @@
 package dev.klaiber.cirrus.ui.chat.components
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,7 +18,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined.Tune
@@ -28,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,12 +57,17 @@ fun Composer(
     toolsEnabled: Boolean,
     thinkMode: ThinkMode,
     sendOnEnter: Boolean,
+    voiceAvailable: Boolean,
+    isListening: Boolean,
+    voiceLevel: Float,
+    isVoiceOnDevice: Boolean,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
     onAttach: () -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onToggleTools: () -> Unit,
+    onToggleVoice: () -> Unit,
     onOpenParameters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -77,6 +86,14 @@ fun Composer(
                 )
             }
 
+            if (isListening) {
+                ListeningBanner(
+                    level = voiceLevel,
+                    isOnDevice = isVoiceOnDevice,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 shape = RoundedCornerShape(24.dp),
@@ -90,7 +107,7 @@ fun Composer(
                     ) {
                         if (input.isEmpty()) {
                             Text(
-                                text = "Message Cirrus…",
+                                text = if (isListening) "Listening…" else "Message Cirrus…",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -132,6 +149,18 @@ fun Composer(
                             description = "Attach a file",
                             onClick = onAttach,
                         )
+                        if (voiceAvailable) {
+                            ComposerIcon(
+                                icon = if (isListening) Icons.Filled.Mic else Icons.Outlined.Mic,
+                                description = if (isListening) {
+                                    "Stop dictation"
+                                } else {
+                                    "Dictate a message"
+                                },
+                                onClick = onToggleVoice,
+                                active = isListening,
+                            )
+                        }
                         ComposerIcon(
                             icon = Icons.Outlined.TravelExplore,
                             description = if (toolsEnabled) "Disable web tools" else "Enable web tools",
@@ -167,6 +196,78 @@ fun Composer(
         }
     }
 }
+
+/**
+ * Confirms that the microphone really is open, and says where the audio is going.
+ *
+ * The bars follow the recogniser's own loudness readings, which is the only honest way to show
+ * that speech is being picked up — a static "listening" label looks identical to a dead mic.
+ */
+@Composable
+private fun ListeningBanner(
+    level: Float,
+    isOnDevice: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(14.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LevelMeter(level = level)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "Listening",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    text = if (isOnDevice) {
+                        "Transcribed on this device"
+                    } else {
+                        "Transcribed by your device's speech service"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                )
+            }
+            Text(
+                text = "Tap the mic to stop",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LevelMeter(level: Float) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        // Staggered thresholds so quiet speech moves the inner bars before the outer ones.
+        BAR_WEIGHTS.forEach { weight ->
+            val target = (MIN_BAR_HEIGHT + level * weight * MAX_BAR_GROWTH).dp
+            val height by animateDpAsState(targetValue = target, label = "voice-level-bar")
+            Box(
+                modifier = Modifier
+                    .size(width = 3.dp, height = height)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.onSecondaryContainer),
+            )
+        }
+    }
+}
+
+private val BAR_WEIGHTS = listOf(0.45f, 0.8f, 1f, 0.8f, 0.45f)
+private const val MIN_BAR_HEIGHT = 4f
+private const val MAX_BAR_GROWTH = 18f
 
 @Composable
 private fun ComposerIcon(

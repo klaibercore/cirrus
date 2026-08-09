@@ -172,8 +172,11 @@ class ChatEngine @Inject constructor(
     /**
      * Asks the model for a short thread title. Returns null on any failure, since a missing
      * title is cosmetic and must never surface as an error in the chat.
+     *
+     * [transcript] is a digest of the conversation so far, so a thread that has wandered away
+     * from its opening question can be renamed to match what it actually became.
      */
-    suspend fun suggestTitle(model: String, userText: String, assistantText: String): String? =
+    suspend fun suggestTitle(model: String, transcript: String): String? =
         runCatching {
             val request = ChatRequestDto(
                 model = model,
@@ -181,19 +184,13 @@ class ChatEngine @Inject constructor(
                 messages = listOf(
                     MessageDto(
                         role = Role.SYSTEM.wire,
-                        content = "You write short chat titles. Reply with a title of at most six " +
-                            "words. No quotes, no punctuation at the end, no preamble.",
+                        content = "You write short chat titles. Read the conversation and reply " +
+                            "with a title of at most six words describing what it is about. " +
+                            "No quotes, no punctuation at the end, no preamble.",
                     ),
                     MessageDto(
                         role = Role.USER.wire,
-                        content = buildString {
-                            append("User: ")
-                            append(userText.take(TITLE_SOURCE_CHARS))
-                            if (assistantText.isNotBlank()) {
-                                append("\n\nAssistant: ")
-                                append(assistantText.take(TITLE_SOURCE_CHARS))
-                            }
-                        },
+                        content = transcript.take(TITLE_SOURCE_CHARS),
                     ),
                 ),
                 // Thinking models would otherwise spend their budget on a six-word title.
@@ -332,7 +329,7 @@ class ChatEngine @Inject constructor(
 
     private companion object {
         const val MAX_DOCUMENT_CHARS = 100_000
-        const val TITLE_SOURCE_CHARS = 500
+        const val TITLE_SOURCE_CHARS = 2_000
         const val TITLE_TOKEN_BUDGET = 24
         const val MAX_TITLE_CHARS = 60
     }

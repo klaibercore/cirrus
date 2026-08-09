@@ -28,6 +28,11 @@ data class ConversationEntity(
     val archived: Boolean,
     val forkedFromConversationId: String?,
     val forkedFromMessageId: String?,
+    /**
+     * When the model last wrote this title. Null means the title is the user's — either typed by
+     * hand or still the placeholder — and auto-titling must leave it alone.
+     */
+    val autoTitledAt: Long?,
 )
 
 @Entity(

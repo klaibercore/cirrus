@@ -3,8 +3,10 @@ package dev.klaiber.cirrus.domain.model
 /**
  * A model exposed by the configured Ollama host.
  *
- * Capabilities are inferred from the model name because `/api/tags` on the cloud host reports
- * only naming and size metadata. This keeps the picker useful without a per-model round trip.
+ * `/api/tags` reports only naming and size metadata, so capabilities arrive later from
+ * `/api/show` ([reportedCapabilities]). Until then — or on a host that has no such route — they
+ * are inferred from the model name, which keeps the picker useful without blocking on a round
+ * trip per model.
  */
 data class ModelInfo(
     val name: String,
@@ -13,15 +15,46 @@ data class ModelInfo(
     val quantization: String?,
     val family: String?,
     val modifiedAt: String?,
+    /** Straight from `/api/show`. Null means "not answered yet", not "no capabilities". */
+    val reportedCapabilities: Set<ModelCapability>? = null,
+    val contextLength: Int? = null,
+    /** Set for models the host proxies to Ollama's cloud rather than running locally. */
+    val remoteHost: String? = null,
 ) {
-    val supportsThinking: Boolean get() = THINKING_PATTERNS.any { it in name.lowercase() }
+    /** Server-reported capabilities when we have them, name-derived guesses otherwise. */
+    val capabilities: Set<ModelCapability>
+        get() = reportedCapabilities ?: inferredCapabilities
 
-    val supportsVision: Boolean get() = VISION_PATTERNS.any { it in name.lowercase() }
+    /** True once the server has told us what this model can do, rather than us guessing. */
+    val hasVerifiedCapabilities: Boolean get() = reportedCapabilities != null
 
-    /** Ollama's cloud-hosted models are suffixed `-cloud` or served without a local size tag. */
-    val isCloudHosted: Boolean get() = name.endsWith("-cloud")
+    val supportsThinking: Boolean get() = ModelCapability.THINKING in capabilities
+
+    val supportsVision: Boolean get() = ModelCapability.VISION in capabilities
+
+    val supportsTools: Boolean get() = ModelCapability.TOOLS in capabilities
+
+    val supportsAudio: Boolean get() = ModelCapability.AUDIO in capabilities
+
+    /** Ollama's cloud-hosted models are suffixed `-cloud`; `/api/show` also names the host. */
+    val isCloudHosted: Boolean get() = remoteHost != null || name.endsWith("-cloud")
 
     val displayName: String get() = name.removeSuffix("-cloud")
+
+    /** The `:tag` part, shown under the name so long identifiers stay readable. */
+    val tag: String? get() = name.substringAfter(':', "").takeIf { it.isNotEmpty() }
+
+    /** Name without its tag, for the card headline. */
+    val baseName: String get() = displayName.substringBefore(':')
+
+    /**
+     * Capabilities worth putting on a card. `completion` is true of everything conversational,
+     * so showing it would only add noise.
+     */
+    val badges: List<ModelCapability>
+        get() = capabilities
+            .filterNot { it == ModelCapability.COMPLETION }
+            .sortedBy { BADGE_ORDER.indexOf(it).takeIf { index -> index >= 0 } ?: BADGE_ORDER.size }
 
     /** Human-readable size, or null for cloud models that report a zero/unknown size. */
     val displaySize: String?
@@ -32,7 +65,34 @@ data class ModelInfo(
             else -> "%.0f MB".format(sizeBytes / 1_000_000.0)
         }
 
+    /** Context window in the units people actually quote, e.g. 262144 -> "256K context". */
+    val displayContextLength: String?
+        get() = contextLength?.takeIf { it > 0 }?.let { tokens ->
+            when {
+                tokens >= 1_048_576 -> "${tokens / 1_048_576}M context"
+                tokens >= 1024 -> "${tokens / 1024}K context"
+                else -> "$tokens context"
+            }
+        }
+
+    private val inferredCapabilities: Set<ModelCapability>
+        get() = buildSet {
+            val lowercase = name.lowercase()
+            add(ModelCapability.COMPLETION)
+            if (THINKING_PATTERNS.any { it in lowercase }) add(ModelCapability.THINKING)
+            if (VISION_PATTERNS.any { it in lowercase }) add(ModelCapability.VISION)
+        }
+
     private companion object {
+        val BADGE_ORDER = listOf(
+            ModelCapability.VISION,
+            ModelCapability.THINKING,
+            ModelCapability.TOOLS,
+            ModelCapability.AUDIO,
+            ModelCapability.IMAGE,
+            ModelCapability.INSERT,
+            ModelCapability.EMBEDDING,
+        )
         val THINKING_PATTERNS = listOf(
             "gpt-oss", "qwen3", "qwen3.5", "deepseek-v3", "deepseek-v4", "deepseek-r1",
             "glm-4", "glm-5", "minimax", "kimi", "nemotron", "magistral",

@@ -137,6 +137,35 @@ class OllamaClientTest {
     }
 
     @Test
+    fun `showModel parses capabilities and context length`() = runTest {
+        server.enqueue(
+            MockResponse.Builder()
+                .body(
+                    """
+                    {"capabilities":["completion","vision","tools"],
+                     "details":{"parameter_size":"27B"},
+                     "model_info":{"general.architecture":"gemma3","gemma3.context_length":131072}}
+                    """.trimIndent()
+                )
+                .build()
+        )
+        val response = client.showModel("gemma3:27b")
+        assertEquals(listOf("completion", "vision", "tools"), response.capabilities)
+        assertEquals("27B", response.details?.parameterSize)
+
+        val request = server.takeRequest()
+        assertEquals("/api/show", request.url.encodedPath)
+        assertTrue(request.body!!.utf8().contains("\"model\":\"gemma3:27b\""))
+    }
+
+    @Test
+    fun `showModel maps a missing route to a typed error`() = runTest {
+        server.enqueue(MockResponse.Builder().code(404).body("""{"error":"not found"}""").build())
+        val error = runCatching { client.showModel("gemma3:27b") }.exceptionOrNull()
+        assertTrue(error is OllamaException.ModelNotFound)
+    }
+
+    @Test
     fun `webSearch posts to the search endpoint`() = runTest {
         server.enqueue(
             MockResponse.Builder()

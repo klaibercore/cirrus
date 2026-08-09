@@ -136,6 +136,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setSendOnEnter(enabled) }
     }
 
+    fun setVoiceInputEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setVoiceInputEnabled(enabled) }
+    }
+
+    fun setPreferOnDeviceRecognition(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setPreferOnDeviceRecognition(enabled) }
+    }
+
     fun setToolsDefault(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setToolsEnabledByDefault(enabled) }
     }

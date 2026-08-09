@@ -105,6 +105,12 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setSendOnEnter(enabled: Boolean) = edit { it[Keys.SEND_ON_ENTER] = enabled }
 
+    suspend fun setVoiceInputEnabled(enabled: Boolean) = edit { it[Keys.VOICE_INPUT] = enabled }
+
+    suspend fun setPreferOnDeviceRecognition(enabled: Boolean) = edit {
+        it[Keys.ON_DEVICE_RECOGNITION] = enabled
+    }
+
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         dataStore.edit(block)
     }
@@ -129,6 +135,8 @@ class SettingsRepository @Inject constructor(
         autoTitleConversations = this[Keys.AUTO_TITLE] ?: true,
         contextMessageLimit = this[Keys.CONTEXT_LIMIT] ?: 0,
         sendOnEnter = this[Keys.SEND_ON_ENTER] ?: false,
+        voiceInputEnabled = this[Keys.VOICE_INPUT] ?: true,
+        preferOnDeviceRecognition = this[Keys.ON_DEVICE_RECOGNITION] ?: true,
     )
 
     private object Keys {
@@ -147,5 +155,7 @@ class SettingsRepository @Inject constructor(
         val AUTO_TITLE = booleanPreferencesKey("auto_title")
         val CONTEXT_LIMIT = intPreferencesKey("context_limit")
         val SEND_ON_ENTER = booleanPreferencesKey("send_on_enter")
+        val VOICE_INPUT = booleanPreferencesKey("voice_input")
+        val ON_DEVICE_RECOGNITION = booleanPreferencesKey("on_device_recognition")
     }
 }

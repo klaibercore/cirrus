@@ -35,4 +35,11 @@ data class AppSettings(
      */
     val contextMessageLimit: Int = 0,
     val sendOnEnter: Boolean = false,
+    /** Shows the microphone in the composer. */
+    val voiceInputEnabled: Boolean = true,
+    /**
+     * Prefer Android's offline recogniser, so dictated audio never leaves the device. Falls back
+     * to the network recogniser when the platform has no on-device model for the locale.
+     */
+    val preferOnDeviceRecognition: Boolean = true,
 )

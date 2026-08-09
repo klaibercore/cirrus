@@ -76,6 +76,13 @@ class ConversationRepository @Inject constructor(
     suspend fun rename(id: String, title: String) =
         conversationDao.rename(id, title.trim().ifEmpty { DEFAULT_TITLE }, System.currentTimeMillis())
 
+    /** Records a title the model wrote, along with the moment it was written. */
+    suspend fun applyAutoTitle(id: String, title: String, now: Long = System.currentTimeMillis()) {
+        val clean = title.trim()
+        if (clean.isEmpty()) return
+        conversationDao.applyAutoTitle(id, clean, now)
+    }
+
     suspend fun setPinned(id: String, pinned: Boolean) =
         conversationDao.setPinned(id, pinned, System.currentTimeMillis())
 

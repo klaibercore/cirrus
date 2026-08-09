@@ -24,6 +24,7 @@ object DatabaseModule {
     fun provideDatabase(@ApplicationContext context: Context): CirrusDatabase =
         Room.databaseBuilder(context, CirrusDatabase::class.java, CirrusDatabase.NAME)
             // Cascading deletes of messages/attachments rely on foreign keys being enforced.
+            .addMigrations(CirrusDatabase.MIGRATION_1_2)
             .build()
 
     @Provides
