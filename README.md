@@ -2,10 +2,8 @@
 
 # ☁️ Cirrus
 
-**A native Android client for [Ollama](https://ollama.com) that treats your phone like a real workstation.**
-
-Streams tokens as they arrive. Knows what each model can actually do. Reads your code on GitHub.
-Speaks fluent Markdown. Never sends your keys anywhere.
+**An Android [Ollama](https://ollama.com) client for developers who want their local models to
+actually do things.**
 
 [![CI](https://github.com/klaibercore/cirrus/actions/workflows/ci.yml/badge.svg)](https://github.com/klaibercore/cirrus/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -17,18 +15,21 @@ Speaks fluent Markdown. Never sends your keys anywhere.
 
 ---
 
-## Why another Ollama client
+## Why Cirrus?
 
-Most mobile clients are a text box wrapped around `/api/chat`. Cirrus assumes you already know
-what a context window is, and gets out of your way:
+- Asks `/api/show` what each model can do, instead of guessing from names.
+- Reads and writes your GitHub — writes stay off until you allow them.
+- API keys encrypted with an Android Keystore key that never leaves.
+
+At more length: most mobile clients are a text box wrapped around `/api/chat`. Cirrus assumes you
+already know what a context window is, and gets out of your way.
 
 - The **model picker knows what each model can do** — vision, reasoning, tools, context length —
   because it asks `/api/show` rather than guessing from the name.
 - **Every setting explains itself.** Long-press any control, or tap the `?`. No more wondering
   whether `min_p` and `top_k` should both be on. (They shouldn't.)
 - **Tools that matter.** Web search, page fetch, and a full GitHub integration that reads your
-  private repositories, triages issues and reviews pull requests.
-- **Attach an MCP server** and its tools appear alongside the built-in ones.
+  private repositories, triages issues, reviews pull requests and commits files.
 - **Your secrets stay on the device**, encrypted with a key that never leaves the Android Keystore.
 
 ---

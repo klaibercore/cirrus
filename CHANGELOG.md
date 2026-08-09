@@ -21,6 +21,8 @@ release moves these entries under `## [1.0.0] - YYYY-MM-DD`; see
 
 ### Changed
 
+- A positioning tagline, carried by the README and the GitHub social preview card.
+
 - `/api/show` parsing extracted from `ModelRepository` into `ModelCapabilityDetector`, and the
   model picker's facets extracted from `ModelPickerSheet` into `ModelFilter`, so both are
   testable without a repository or a rendered sheet.
