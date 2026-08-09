@@ -13,6 +13,9 @@ release moves these entries under `## [1.0.0] - YYYY-MM-DD`; see
 
 ### Added
 
+- MCP over the older two-channel SSE transport, alongside the streamable-HTTP one. A server that
+  answers the streamable-HTTP handshake with an `endpoint` event is retried on SSE automatically,
+  so attaching an older server needs no configuration.
 - Signed release builds. Pushing a `vX.Y.Z` tag builds, signs and verifies an APK and publishes
   it to GitHub Releases with generated notes and a `.sha256`, so Obtainium can track it.
 - `github_create_or_update_file` — commit a single file to a repository, behind the existing
@@ -22,6 +25,9 @@ release moves these entries under `## [1.0.0] - YYYY-MM-DD`; see
 ### Changed
 
 - A positioning tagline, carried by the README and the GitHub social preview card.
+- `McpClient` split from its wire: transports now sit behind an `McpTransport` interface.
+- The README no longer claims MCP servers can be attached from the UI. The client exists and is
+  tested, but nothing reaches it yet, so the claim was not true.
 
 - `/api/show` parsing extracted from `ModelRepository` into `ModelCapabilityDetector`, and the
   model picker's facets extracted from `ModelPickerSheet` into `ModelFilter`, so both are

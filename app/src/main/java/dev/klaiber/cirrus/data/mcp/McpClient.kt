@@ -1,6 +1,5 @@
 package dev.klaiber.cirrus.data.mcp
 
-import dev.klaiber.cirrus.di.GitHubHttp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -12,14 +11,13 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** The protocol revision Cirrus implements, sent on every request. */
+internal const val MCP_PROTOCOL_VERSION = "2025-06-18"
 
 /** A remote MCP server the user has attached, such as GitHub's. */
 data class McpServerConfig(
@@ -29,6 +27,11 @@ data class McpServerConfig(
     /** Sent as `Authorization: Bearer`. Most hosted servers take a PAT here. */
     val token: String? = null,
     val enabled: Boolean = true,
+    /**
+     * Which wire to speak. New servers default to the current transport and fall back to SSE
+     * automatically if the server turns out to want it, so this rarely has to be set by hand.
+     */
+    val transport: McpTransportKind = McpTransportKind.STREAMABLE_HTTP,
 )
 
 /** A tool as the server describes it. [inputSchema] is passed to the model unchanged. */
@@ -45,26 +48,32 @@ sealed class McpException(message: String) : IOException(message) {
 }
 
 /**
- * A Model Context Protocol client over the streamable HTTP transport.
+ * A Model Context Protocol client.
  *
  * Enough of the protocol to attach a remote server and use its tools: `initialize`, then
  * `tools/list` and `tools/call`. Server-initiated requests, sampling and resources are not
  * implemented, because a chat client that only consumes tools never needs them.
  *
- * The transport is deliberately request/response. A server may reply with either a single JSON
- * body or an SSE stream containing one JSON-RPC message; both are handled, but no long-lived
- * stream is held open, so there is no connection to keep alive across process death.
+ * The wire itself lives behind [McpTransport]. This class holds the protocol — envelope shape,
+ * handshake order, session ids — in one place, so supporting a second transport did not mean
+ * writing the protocol twice.
  */
 @Singleton
 class McpClient @Inject constructor(
-    // Shares the GitHub client because both need bearer auth and neither may carry the Ollama key.
-    @GitHubHttp private val httpClient: OkHttpClient,
+    private val streamableHttp: StreamableHttpMcpTransport,
+    private val sse: SseMcpTransport,
     private val json: Json,
 ) {
     private val nextId = AtomicLong(1)
 
     /** Session ids are per-server and handed out by `initialize`. */
     private val sessions = mutableMapOf<String, String>()
+
+    /**
+     * Transport actually in use per server, which may differ from the configured one once the
+     * server has told us it speaks the other.
+     */
+    private val transports = mutableMapOf<String, McpTransportKind>()
 
     suspend fun listTools(server: McpServerConfig): List<McpToolDescriptor> =
         withContext(Dispatchers.IO) {
@@ -123,23 +132,64 @@ class McpClient @Inject constructor(
 
     fun forget(serverId: String) {
         synchronized(sessions) { sessions.remove(serverId) }
+        synchronized(transports) { transports.remove(serverId) }
+        streamableHttp.close(serverId)
+        sse.close(serverId)
     }
+
+    /** Which transport a server ended up on, once it has been talked to. */
+    fun transportFor(serverId: String): McpTransportKind? =
+        synchronized(transports) { transports[serverId] }
 
     /**
      * Performs the handshake once per server.
      *
      * MCP requires `initialize` before anything else, and the session id it returns has to be
      * echoed on every later request.
+     *
+     * A server configured as streamable-HTTP that answers with the SSE handshake is not an error
+     * — it is an older server. The handshake is retried on the other transport and the choice
+     * remembered, so attaching one costs the user no configuration.
      */
     private fun ensureInitialized(server: McpServerConfig) {
         synchronized(sessions) { if (sessions.containsKey(server.id)) return }
 
-        val response = request(
+        val response = try {
+            initialize(server, server.transport)
+        } catch (mismatch: McpTransportMismatch) {
+            synchronized(transports) { transports[server.id] = McpTransportKind.SSE }
+            initialize(server, McpTransportKind.SSE)
+        }
+
+        response.sessionId?.let { id -> synchronized(sessions) { sessions[server.id] = id } }
+        parseResult(response.body)
+
+        // The spec requires this notification before normal operation; it expects no reply.
+        runCatching {
+            send(
+                server = server,
+                body = buildJsonObject {
+                    put("jsonrpc", "2.0")
+                    put("method", "notifications/initialized")
+                }.toString(),
+                requestId = null,
+            )
+        }
+    }
+
+    private fun initialize(
+        server: McpServerConfig,
+        kind: McpTransportKind,
+    ): McpTransportReply {
+        synchronized(transports) { transports[server.id] = kind }
+        val id = nextId.getAndIncrement()
+        return send(
             server = server,
-            body = jsonRpc(
+            body = envelope(
+                id = id,
                 method = "initialize",
                 params = buildJsonObject {
-                    put("protocolVersion", PROTOCOL_VERSION)
+                    put("protocolVersion", MCP_PROTOCOL_VERSION)
                     putJsonObject("capabilities") {}
                     putJsonObject("clientInfo") {
                         put("name", CLIENT_NAME)
@@ -147,84 +197,36 @@ class McpClient @Inject constructor(
                     }
                 },
             ),
+            requestId = id,
         )
-
-        response.sessionId?.let { id -> synchronized(sessions) { sessions[server.id] = id } }
-        parseResult(response.body)
-
-        // The spec requires this notification before normal operation; it expects no reply.
-        runCatching {
-            request(
-                server = server,
-                body = buildJsonObject {
-                    put("jsonrpc", "2.0")
-                    put("method", "notifications/initialized")
-                }.toString(),
-            )
-        }
     }
 
-    private fun call(server: McpServerConfig, method: String, params: JsonObject): JsonObject =
-        parseResult(request(server, jsonRpc(method, params)).body)
+    private fun call(server: McpServerConfig, method: String, params: JsonObject): JsonObject {
+        val id = nextId.getAndIncrement()
+        val reply = send(server, envelope(id, method, params), requestId = id)
+        return parseResult(reply.body)
+    }
 
-    private fun jsonRpc(method: String, params: JsonObject): String = buildJsonObject {
+    private fun send(
+        server: McpServerConfig,
+        body: String,
+        requestId: Long?,
+    ): McpTransportReply {
+        val kind = synchronized(transports) { transports[server.id] } ?: server.transport
+        val transport = when (kind) {
+            McpTransportKind.STREAMABLE_HTTP -> streamableHttp
+            McpTransportKind.SSE -> sse
+        }
+        val sessionId = synchronized(sessions) { sessions[server.id] }
+        return transport.send(server, body, requestId, sessionId)
+    }
+
+    private fun envelope(id: Long, method: String, params: JsonObject): String = buildJsonObject {
         put("jsonrpc", "2.0")
-        put("id", nextId.getAndIncrement())
+        put("id", id)
         put("method", method)
         put("params", params)
     }.toString()
-
-    private data class RawResponse(val body: String, val sessionId: String?)
-
-    private fun request(server: McpServerConfig, body: String): RawResponse {
-        val builder = Request.Builder()
-            .url(server.url)
-            .header("Content-Type", "application/json")
-            // A server may answer with either; saying we accept both is what the spec asks.
-            .header("Accept", "application/json, text/event-stream")
-            .header("MCP-Protocol-Version", PROTOCOL_VERSION)
-            .post(body.toRequestBody(JSON_MEDIA_TYPE))
-
-        server.token?.takeIf { it.isNotBlank() }
-            ?.let { builder.header("Authorization", "Bearer $it") }
-        synchronized(sessions) { sessions[server.id] }
-            ?.let { builder.header("Mcp-Session-Id", it) }
-
-        val response = try {
-            httpClient.newCall(builder.build()).execute()
-        } catch (io: IOException) {
-            throw McpException.Transport(io.message ?: "network error")
-        }
-
-        response.use {
-            val text = it.body.string()
-            if (!it.isSuccessful) {
-                throw McpException.Remote(it.code, text.take(MAX_ERROR_CHARS))
-            }
-            return RawResponse(
-                body = if (it.header("Content-Type").orEmpty().startsWith("text/event-stream")) {
-                    extractSseData(text)
-                } else {
-                    text
-                },
-                sessionId = it.header("Mcp-Session-Id"),
-            )
-        }
-    }
-
-    /**
-     * Pulls the JSON-RPC message out of an SSE body.
-     *
-     * Only the last `data:` payload matters here: a request/response exchange carries one
-     * message, and any earlier frames are keep-alives or progress notifications.
-     */
-    private fun extractSseData(text: String): String = text
-        .lineSequence()
-        .filter { it.startsWith("data:") }
-        .map { it.removePrefix("data:").trim() }
-        .filter { it.isNotEmpty() }
-        .lastOrNull()
-        ?: throw McpException.Protocol("event stream contained no data frame")
 
     private fun parseResult(body: String): JsonObject {
         if (body.isBlank()) return JsonObject(emptyMap())
@@ -241,11 +243,8 @@ class McpClient @Inject constructor(
     }
 
     private companion object {
-        const val PROTOCOL_VERSION = "2025-06-18"
         const val CLIENT_NAME = "cirrus"
         const val CLIENT_VERSION = "1.0.0"
-        const val MAX_ERROR_CHARS = 500
-        val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         val EMPTY_SCHEMA: JsonElement = buildJsonObject { put("type", "object") }
     }
 }

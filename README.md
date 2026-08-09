@@ -41,9 +41,9 @@ already know what a context window is, and gets out of your way.
 | 🧠 **Capability-aware model picker** | Cards showing parameter count, quantization, on-disk size and context window, with labelled capability chips. Filter by vision, reasoning, tools, cloud or local. |
 | ⚡ **True token streaming** | NDJSON straight from `/api/chat`. Hit stop and the OkHttp call is cancelled, so the server stops generating too — no phantom token burn. |
 | 🤔 **Reasoning traces** | `thinking` deltas stream into a collapsible section, with effort control for models that support it. |
-| 🔧 **Tool calling** | Bounded multi-round tool loops. Web search, page fetch, GitHub, and any MCP server you attach. |
+| 🔧 **Tool calling** | Bounded multi-round tool loops. Web search, page fetch and the GitHub tools. |
 | 🐙 **GitHub integration** | Read code in public *and* private repos, search, browse trees, read issues and PR diffs. Opening issues, commenting, posting reviews and committing files are behind a separate, default-off switch. |
-| 🔌 **MCP client** | Streamable-HTTP Model Context Protocol client. Point it at a remote server and its tools are discovered at runtime. |
+| 🔌 **MCP client** | Model Context Protocol client over both HTTP transports (streamable and SSE), with the transport auto-detected. Not yet reachable from the UI — see below. |
 | 🎙️ **Voice dictation** | Speak into the composer with a live level meter. Prefers Android's on-device recogniser, so audio need never leave the phone. |
 | ✍️ **Markdown that survives streaming** | A hand-written CommonMark subset tolerant of half-finished input, with a real lexer for syntax highlighting — not regex passes that mistake `//` inside a string for a comment. |
 | 🏷️ **Self-maintaining titles** | Threads are named from their content and re-summarised as they grow, throttled so a long session costs a handful of short requests. Rename one yourself and it is never overwritten. |
@@ -116,11 +116,17 @@ Ask things like:
 >
 > *Review PR #12 — focus on error handling, don't approve it.*
 
-### Attaching an MCP server
+### MCP — not wired up yet
 
-Cirrus speaks the [Model Context Protocol](https://modelcontextprotocol.io) over streamable HTTP.
-Attach a remote server with a URL and a bearer token, and its tools are discovered via `tools/list`
-and bridged into the same registry the built-in tools live in.
+Cirrus contains a [Model Context Protocol](https://modelcontextprotocol.io) client that speaks
+both HTTP transports: the current streamable-HTTP one and the older two-channel SSE one, chosen
+per server and auto-detected when a server answers with the SSE handshake. It does `initialize`,
+`tools/list` and `tools/call`, and it is covered by tests.
+
+**There is no UI for it yet.** You cannot attach a server from Settings, nothing is persisted,
+and `ToolRegistry` does not offer MCP tools to the model. The client is finished; the wiring
+around it is not. Until that lands, treat MCP as a library inside the app rather than a feature
+of it — tracked as a follow-up to v1.0.0.
 
 ---
 
@@ -139,13 +145,13 @@ graph TD
     subgraph domain["domain — pure Kotlin, no Android"]
         Engine[ChatEngine<br/>the turn protocol]
         Registry[ToolRegistry]
-        Tools[WebSearch · WebFetch<br/>GitHub × 12 · MCP]
+        Tools[WebSearch · WebFetch<br/>GitHub × 12]
     end
 
     subgraph data["data"]
         Ollama[OllamaClient<br/>NDJSON streaming]
         GitHub[GitHubClient<br/>REST v3]
-        Mcp[McpClient<br/>JSON-RPC]
+        Mcp[McpClient<br/>JSON-RPC · not yet wired]
         Room[(Room<br/>conversations)]
         Store[(DataStore<br/>Keystore-encrypted)]
     end
@@ -157,7 +163,6 @@ graph TD
     Registry --> Tools
     Engine --> Ollama
     Tools --> GitHub
-    Tools --> Mcp
     Tools --> Ollama
     Chat --> Room
 
@@ -241,7 +246,7 @@ Cirrus talks to exactly two kinds of endpoint, both of which you choose:
 1. **The Ollama host you configure** — your own machine, or `ollama.com`.
 2. **`api.github.com`** — only if you enable the GitHub tools.
 
-Plus any MCP server you explicitly attach.
+Plus any MCP server you explicitly attach, once that is reachable from the UI.
 
 Your API key and GitHub token are stored in DataStore, encrypted with AES-GCM using a key
 generated in and never released from the Android Keystore. Conversations, messages and attachments

@@ -24,7 +24,9 @@ class McpClientTest {
     fun setUp() {
         server = MockWebServer()
         server.start()
-        client = McpClient(OkHttpClient(), Json { ignoreUnknownKeys = true })
+        val json = Json { ignoreUnknownKeys = true }
+        val http = OkHttpClient()
+        client = McpClient(StreamableHttpMcpTransport(http), SseMcpTransport(http, json), json)
         config = McpServerConfig(
             id = "github",
             label = "GitHub",
@@ -188,5 +190,38 @@ class McpClientTest {
         val error = runCatching { client.listTools(config) }.exceptionOrNull()
         assertTrue(error is McpException.Remote)
         assertEquals(401, (error as McpException.Remote).code)
+    }
+
+    @Test
+    fun `a server that answers with the sse handshake is retried on the sse transport`() = runTest {
+        // An older server responds to the streamable-HTTP POST with the two-channel handshake.
+        // That is not an error to report; it means the transport guess was wrong.
+        server.enqueue(
+            MockResponse.Builder()
+                .addHeader("Content-Type", "text/event-stream")
+                .body("event: endpoint\ndata: /messages\n\n")
+                .build()
+        )
+
+        // The retry then fails on its own terms — there is no event stream behind this mock —
+        // but the transport it settled on is what this asserts.
+        runCatching { client.listTools(config) }
+
+        assertEquals(McpTransportKind.SSE, client.transportFor(config.id))
+    }
+
+    @Test
+    fun `a normal server stays on the streamable http transport`() = runTest {
+        server.enqueue(initializeResponse())
+        server.enqueue(emptyResponse())
+        server.enqueue(
+            MockResponse.Builder()
+                .body("""{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}""")
+                .build()
+        )
+
+        client.listTools(config)
+
+        assertEquals(McpTransportKind.STREAMABLE_HTTP, client.transportFor(config.id))
     }
 }
