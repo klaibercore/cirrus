@@ -24,9 +24,15 @@ release moves these entries under `## [1.0.0] - YYYY-MM-DD`; see
   default-off write switch. Resolves the blob SHA itself so updates do not need one supplied.
 - Test coverage for `/api/show` capability detection, against recorded response fixtures.
 
+### Fixed
+
+- Cloud models showed a raw parameter count in the picker — `32682372656` rather than `32.7B` —
+  because `/api/show` labels the value for local models but not for hosted ones. A model that
+  publishes no count showed a bare `0`; it is now omitted.
+
 ### Changed
 
-- A positioning tagline, carried by the README and the GitHub social preview card.
+- Screenshots in the README, and a positioning tagline carried by it and the social preview card.
 - `McpClient` split from its wire: transports now sit behind an `McpTransport` interface.
 - The README no longer claims MCP servers can be attached from the UI. The client exists and is
   tested, but nothing reaches it yet, so the claim was not true.
