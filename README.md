@@ -36,14 +36,12 @@ Or build it yourself — see [Building](#building).
 
 ## Screenshots
 
-| | |
-|:---:|:---:|
-| ![Model picker showing capability chips](docs/screenshots/01-model-picker.png) | ![Capability chips on a model card](docs/screenshots/02-capability-chips.png) |
-| **Model picker knows which models support tools and vision** | **Capability chips — see at a glance what each model can do** |
-| ![Streaming answer with a reasoning trace](docs/screenshots/03-streaming-reasoning.png) | ![GitHub tool switches in Settings](docs/screenshots/04-github-tools.png) |
-| **Streaming chat with visible reasoning trace** | **GitHub tools — each one switchable, writes off by default** |
-| ![A model reading a repository through the GitHub tool](docs/screenshots/05-github-tool.png) | ![Connection settings storing the key in the Keystore](docs/screenshots/06-keystore.png) |
-| **GitHub tool — let the model read your repo** | **Credentials stay in the Android Keystore** |
+| | | |
+|:---:|:---:|:---:|
+| ![Model picker filtered to vision-capable models, each card showing capability chips](docs/screenshots/01-model-picker.png) | ![Parameters sheet with reasoning effort and sampling controls](docs/screenshots/02-parameters.png) | ![A Python code block with syntax highlighting](docs/screenshots/03-markdown-code.png) |
+| **Filter to the models that can actually do the job** — chips come from `/api/show`, not the name | **Every knob explained, and off unless you turn it on** — the server's own default is used otherwise | **Markdown that survives streaming**, with a real lexer for code |
+| ![GitHub settings showing tool switches with write actions off](docs/screenshots/04-github-tools.png) | ![Connection settings showing the key stored encrypted](docs/screenshots/05-keystore.png) | |
+| **Let the model read your repositories** — writes are a separate switch, off by default | **Your key never leaves the device**, encrypted with an Android Keystore key | |
 
 ---
 

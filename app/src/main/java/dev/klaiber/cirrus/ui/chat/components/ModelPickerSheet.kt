@@ -288,7 +288,7 @@ private fun ModelCard(model: ModelInfo, selected: Boolean, onClick: () -> Unit) 
 
 /** Parameter count, quantization, on-disk size and context window, whichever the host reported. */
 private fun metadataLine(model: ModelInfo): String? = listOfNotNull(
-    model.parameterSize,
+    model.displayParameterSize,
     model.quantization,
     model.displaySize,
     model.displayContextLength,

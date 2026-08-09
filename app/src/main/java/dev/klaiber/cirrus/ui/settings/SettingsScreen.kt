@@ -178,7 +178,7 @@ fun SettingsScreen(
             )
             SwitchRow(
                 title = "Allow write actions",
-                subtitle = "Opening issues, commenting, posting reviews",
+                subtitle = "Opening issues, commenting, posting reviews, committing files",
                 help = "Off by default, and worth leaving off. Reading is recoverable; opening " +
                     "an issue or approving a pull request is public and decided by a model " +
                     "rather than by you. With this off, the write tools are not even offered, " +

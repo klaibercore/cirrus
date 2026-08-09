@@ -119,4 +119,42 @@ class ModelInfoTest {
         assertEquals("2.0 GB", model("m", 2_000_000_000).displaySize)
         assertEquals("1.5 TB", model("m", 1_500_000_000_000).displaySize)
     }
+
+    @Test
+    fun `a labelled parameter size is left alone`() {
+        // Local models already answer with a unit; reformatting it would only risk mangling it.
+        assertEquals("8.2B", model("m").copy(parameterSize = "8.2B").displayParameterSize)
+        assertEquals("70B", model("m").copy(parameterSize = "70B").displayParameterSize)
+        assertEquals("117M", model("m").copy(parameterSize = "117M").displayParameterSize)
+    }
+
+    @Test
+    fun `a raw parameter count is formatted the way people quote it`() {
+        // The real values /api/show returns for cloud models, which used to render in full.
+        assertEquals("32.7B", model("m").copy(parameterSize = "32682372656").displayParameterSize)
+        // 1.042T rounds to 1.0, and the trailing zero goes — "1T", not "1.0T".
+        assertEquals("1T", model("m").copy(parameterSize = "1042000000000").displayParameterSize)
+        assertEquals("2.8T", model("m").copy(parameterSize = "2812000000000").displayParameterSize)
+        assertEquals("304.2B", model("m").copy(parameterSize = "304180418494").displayParameterSize)
+    }
+
+    @Test
+    fun `a whole number drops its trailing zero`() {
+        assertEquals("7B", model("m").copy(parameterSize = "7000000000").displayParameterSize)
+        assertEquals("1T", model("m").copy(parameterSize = "1000000000000").displayParameterSize)
+    }
+
+    @Test
+    fun `a parameter count the host does not publish is omitted`() {
+        // minimax-m3 answers "0", which rendered as a bare "0" on the card.
+        assertNull(model("m").copy(parameterSize = "0").displayParameterSize)
+        assertNull(model("m").copy(parameterSize = "").displayParameterSize)
+        assertNull(model("m").copy(parameterSize = "   ").displayParameterSize)
+        assertNull(model("m").copy(parameterSize = null).displayParameterSize)
+    }
+
+    @Test
+    fun `counts below a million are not abbreviated`() {
+        assertEquals("500000", model("m").copy(parameterSize = "500000").displayParameterSize)
+    }
 }

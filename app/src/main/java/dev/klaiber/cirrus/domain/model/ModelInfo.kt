@@ -56,6 +56,30 @@ data class ModelInfo(
             .filterNot { it == ModelCapability.COMPLETION }
             .sortedBy { BADGE_ORDER.indexOf(it).takeIf { index -> index >= 0 } ?: BADGE_ORDER.size }
 
+    /**
+     * Parameter count as people quote it, e.g. "8.2B".
+     *
+     * Local models report this already labelled ("8.2B", "70B"), but cloud-hosted ones report a
+     * bare integer — `/api/show` for `gemma4:31b` answers `32682372656`, which is accurate and
+     * completely unreadable on a card. A value that is all digits is therefore reformatted, and
+     * anything already carrying a unit is passed through untouched.
+     *
+     * Null when the host reports nothing useful, including the literal "0" that cloud models
+     * send for a parameter count they do not publish.
+     */
+    val displayParameterSize: String?
+        get() {
+            val raw = parameterSize?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            val count = raw.toLongOrNull() ?: return raw
+            return when {
+                count <= 0L -> null
+                count >= 1_000_000_000_000L -> trimZero(count / 1_000_000_000_000.0) + "T"
+                count >= 1_000_000_000L -> trimZero(count / 1_000_000_000.0) + "B"
+                count >= 1_000_000L -> trimZero(count / 1_000_000.0) + "M"
+                else -> count.toString()
+            }
+        }
+
     /** Human-readable size, or null for cloud models that report a zero/unknown size. */
     val displaySize: String?
         get() = when {
@@ -82,6 +106,15 @@ data class ModelInfo(
             if (THINKING_PATTERNS.any { it in lowercase }) add(ModelCapability.THINKING)
             if (VISION_PATTERNS.any { it in lowercase }) add(ModelCapability.VISION)
         }
+
+    /**
+     * One decimal place, but "1B" rather than "1.0B".
+     *
+     * Locale.ROOT because this is a technical label rendered inside an English string — a German
+     * device would otherwise produce "32,7B", and the tests would only pass in one locale.
+     */
+    private fun trimZero(value: Double): String =
+        String.format(java.util.Locale.ROOT, "%.1f", value).removeSuffix(".0")
 
     private companion object {
         val BADGE_ORDER = listOf(
