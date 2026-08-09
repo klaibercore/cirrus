@@ -13,6 +13,20 @@ import dev.klaiber.cirrus.domain.model.Conversation
 import dev.klaiber.cirrus.domain.model.GenerationParams
 import dev.klaiber.cirrus.domain.model.Role
 import dev.klaiber.cirrus.domain.tools.ToolRegistry
+import dev.klaiber.cirrus.data.remote.github.GitHubClient
+import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
+import dev.klaiber.cirrus.domain.tools.GitHubToolSet
+import dev.klaiber.cirrus.domain.tools.github.CommentTool
+import dev.klaiber.cirrus.domain.tools.github.CreateIssueTool
+import dev.klaiber.cirrus.domain.tools.github.GetIssueTool
+import dev.klaiber.cirrus.domain.tools.github.GetPullRequestTool
+import dev.klaiber.cirrus.domain.tools.github.ListDirectoryTool
+import dev.klaiber.cirrus.domain.tools.github.ListIssuesTool
+import dev.klaiber.cirrus.domain.tools.github.ListPullRequestsTool
+import dev.klaiber.cirrus.domain.tools.github.ListReposTool
+import dev.klaiber.cirrus.domain.tools.github.ReadFileTool
+import dev.klaiber.cirrus.domain.tools.github.ReviewPullRequestTool
+import dev.klaiber.cirrus.domain.tools.github.SearchCodeTool
 import dev.klaiber.cirrus.domain.tools.WebFetchTool
 import dev.klaiber.cirrus.domain.tools.WebSearchTool
 import kotlinx.coroutines.CoroutineScope
@@ -57,16 +71,35 @@ class ChatEngineTest {
         val dataStore = PreferenceDataStoreFactory.create(scope = scope) {
             File(System.getProperty("java.io.tmpdir"), "cirrus-settings-${System.nanoTime()}.preferences_pb")
         }
+        val gitHubCredentials = GitHubCredentials()
         val settingsRepository = SettingsRepository(
             dataStore = dataStore,
             secretCipher = SecretCipher(),
             credentials = ApiCredentials(),
+            gitHubCredentials = gitHubCredentials,
             json = json,
             scope = scope,
         )
+        // No GitHub token is configured, so the registry offers only the web tools here.
+        val gitHubClient = GitHubClient(OkHttpClient(), json, gitHubCredentials)
         return ToolRegistry(
-            WebSearchTool(client, settingsRepository),
-            WebFetchTool(client),
+            webSearchTool = WebSearchTool(client, settingsRepository),
+            webFetchTool = WebFetchTool(client),
+            gitHubTools = GitHubToolSet(
+                listRepos = ListReposTool(gitHubClient),
+                searchCode = SearchCodeTool(gitHubClient),
+                readFile = ReadFileTool(gitHubClient),
+                listDirectory = ListDirectoryTool(gitHubClient),
+                listIssues = ListIssuesTool(gitHubClient),
+                getIssue = GetIssueTool(gitHubClient),
+                listPulls = ListPullRequestsTool(gitHubClient),
+                getPull = GetPullRequestTool(gitHubClient),
+                createIssue = CreateIssueTool(gitHubClient),
+                comment = CommentTool(gitHubClient),
+                reviewPull = ReviewPullRequestTool(gitHubClient),
+            ),
+            settingsRepository = settingsRepository,
+            gitHubCredentials = gitHubCredentials,
         )
     }
 

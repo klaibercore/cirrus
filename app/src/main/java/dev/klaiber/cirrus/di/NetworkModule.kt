@@ -2,6 +2,7 @@ package dev.klaiber.cirrus.di
 
 import dev.klaiber.cirrus.BuildConfig
 import dev.klaiber.cirrus.data.remote.ApiCredentials
+import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -44,6 +45,43 @@ object NetworkModule {
             // read and overall call timeouts are disabled and cancellation is driven by the UI.
             .readTimeout(0, TimeUnit.SECONDS)
             .callTimeout(0, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+
+    /**
+     * A separate client for github.com.
+     *
+     * The Ollama client above attaches the Ollama API key to every request it makes. Reusing it
+     * would send that key to GitHub, so the two never share a builder.
+     */
+    @Provides
+    @Singleton
+    @GitHubHttp
+    fun provideGitHubOkHttpClient(credentials: GitHubCredentials): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val builder = chain.request().newBuilder()
+                    .header("User-Agent", "Cirrus/${BuildConfig.VERSION_NAME} (Android)")
+                credentials.token?.let { token ->
+                    builder.header("Authorization", "Bearer $token")
+                }
+                chain.proceed(builder.build())
+            }
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    addInterceptor(
+                        HttpLoggingInterceptor().apply {
+                            level = HttpLoggingInterceptor.Level.BASIC
+                            redactHeader("Authorization")
+                        },
+                    )
+                }
+            }
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            // Unlike a streaming generation, every GitHub call is a bounded request/response.
+            .readTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(60, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
 }

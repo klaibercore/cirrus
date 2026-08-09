@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import dev.klaiber.cirrus.data.prefs.SecretCipher
 import dev.klaiber.cirrus.data.remote.ApiCredentials
+import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.di.ApplicationScope
 import dev.klaiber.cirrus.domain.model.AppSettings
 import dev.klaiber.cirrus.domain.model.GenerationParams
@@ -33,6 +34,7 @@ class SettingsRepository @Inject constructor(
     private val dataStore: DataStore<Preferences>,
     private val secretCipher: SecretCipher,
     private val credentials: ApiCredentials,
+    private val gitHubCredentials: GitHubCredentials,
     private val json: Json,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
@@ -40,13 +42,19 @@ class SettingsRepository @Inject constructor(
     val settings: Flow<AppSettings> = dataStore.data.map { it.toAppSettings() }
 
     init {
-        // Keep the blocking-readable credential snapshot in step with persisted settings.
+        // Keep the blocking-readable credential snapshots in step with persisted settings.
         scope.launch {
             dataStore.data.collect { prefs ->
                 val encrypted = prefs[Keys.API_KEY]
                 credentials.update(
                     apiKey = encrypted?.let(secretCipher::decrypt),
                     baseUrl = prefs[Keys.BASE_URL] ?: ApiCredentials.DEFAULT_BASE_URL,
+                )
+                gitHubCredentials.update(
+                    token = prefs[Keys.GITHUB_TOKEN]?.let(secretCipher::decrypt),
+                    // Writes need the tools switched on as well; either flag off means no writes.
+                    writesAllowed = (prefs[Keys.GITHUB_TOOLS] ?: false) &&
+                        (prefs[Keys.GITHUB_WRITES] ?: false),
                 )
             }
         }
@@ -105,6 +113,29 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setSendOnEnter(enabled: Boolean) = edit { it[Keys.SEND_ON_ENTER] = enabled }
 
+    /** Stored with the same Keystore-backed envelope encryption as the Ollama key. */
+    suspend fun setGitHubToken(rawToken: String) {
+        val trimmed = rawToken.trim()
+        dataStore.edit { prefs ->
+            if (trimmed.isEmpty()) {
+                prefs.remove(Keys.GITHUB_TOKEN)
+            } else {
+                val encrypted = secretCipher.encrypt(trimmed)
+                if (encrypted != null) {
+                    prefs[Keys.GITHUB_TOKEN] = encrypted
+                } else {
+                    prefs.remove(Keys.GITHUB_TOKEN)
+                }
+            }
+        }
+    }
+
+    suspend fun clearGitHubToken() = setGitHubToken("")
+
+    suspend fun setGitHubToolsEnabled(enabled: Boolean) = edit { it[Keys.GITHUB_TOOLS] = enabled }
+
+    suspend fun setGitHubWritesAllowed(allowed: Boolean) = edit { it[Keys.GITHUB_WRITES] = allowed }
+
     suspend fun setVoiceInputEnabled(enabled: Boolean) = edit { it[Keys.VOICE_INPUT] = enabled }
 
     suspend fun setPreferOnDeviceRecognition(enabled: Boolean) = edit {
@@ -135,6 +166,9 @@ class SettingsRepository @Inject constructor(
         autoTitleConversations = this[Keys.AUTO_TITLE] ?: true,
         contextMessageLimit = this[Keys.CONTEXT_LIMIT] ?: 0,
         sendOnEnter = this[Keys.SEND_ON_ENTER] ?: false,
+        gitHubToolsEnabled = this[Keys.GITHUB_TOOLS] ?: false,
+        hasGitHubToken = this[Keys.GITHUB_TOKEN] != null,
+        gitHubWritesAllowed = this[Keys.GITHUB_WRITES] ?: false,
         voiceInputEnabled = this[Keys.VOICE_INPUT] ?: true,
         preferOnDeviceRecognition = this[Keys.ON_DEVICE_RECOGNITION] ?: true,
     )
@@ -155,6 +189,9 @@ class SettingsRepository @Inject constructor(
         val AUTO_TITLE = booleanPreferencesKey("auto_title")
         val CONTEXT_LIMIT = intPreferencesKey("context_limit")
         val SEND_ON_ENTER = booleanPreferencesKey("send_on_enter")
+        val GITHUB_TOKEN = stringPreferencesKey("github_token_encrypted")
+        val GITHUB_TOOLS = booleanPreferencesKey("github_tools")
+        val GITHUB_WRITES = booleanPreferencesKey("github_writes")
         val VOICE_INPUT = booleanPreferencesKey("voice_input")
         val ON_DEVICE_RECOGNITION = booleanPreferencesKey("on_device_recognition")
     }

@@ -136,6 +136,22 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setSendOnEnter(enabled) }
     }
 
+    fun saveGitHubToken(token: String) {
+        viewModelScope.launch { settingsRepository.setGitHubToken(token) }
+    }
+
+    fun clearGitHubToken() {
+        viewModelScope.launch { settingsRepository.clearGitHubToken() }
+    }
+
+    fun setGitHubToolsEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setGitHubToolsEnabled(enabled) }
+    }
+
+    fun setGitHubWritesAllowed(allowed: Boolean) {
+        viewModelScope.launch { settingsRepository.setGitHubWritesAllowed(allowed) }
+    }
+
     fun setVoiceInputEnabled(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setVoiceInputEnabled(enabled) }
     }

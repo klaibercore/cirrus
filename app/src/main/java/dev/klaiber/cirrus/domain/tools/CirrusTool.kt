@@ -1,7 +1,19 @@
 package dev.klaiber.cirrus.domain.tools
 
 import dev.klaiber.cirrus.data.remote.OllamaClient
+import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.repository.SettingsRepository
+import dev.klaiber.cirrus.domain.tools.github.CommentTool
+import dev.klaiber.cirrus.domain.tools.github.CreateIssueTool
+import dev.klaiber.cirrus.domain.tools.github.GetIssueTool
+import dev.klaiber.cirrus.domain.tools.github.GetPullRequestTool
+import dev.klaiber.cirrus.domain.tools.github.ListDirectoryTool
+import dev.klaiber.cirrus.domain.tools.github.ListIssuesTool
+import dev.klaiber.cirrus.domain.tools.github.ListPullRequestsTool
+import dev.klaiber.cirrus.domain.tools.github.ListReposTool
+import dev.klaiber.cirrus.domain.tools.github.ReadFileTool
+import dev.klaiber.cirrus.domain.tools.github.ReviewPullRequestTool
+import dev.klaiber.cirrus.domain.tools.github.SearchCodeTool
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -142,17 +154,77 @@ class WebFetchTool @Inject constructor(
     }
 }
 
+/**
+ * Maps tool names to implementations, and decides which are offered to the model.
+ *
+ * [definitions] is computed per turn rather than fixed at construction: which tools exist
+ * depends on what the user has switched on and whether a GitHub token is present. Sending the
+ * schema for a tool that cannot run wastes context and invites the model to call it and fail.
+ */
 @Singleton
 class ToolRegistry @Inject constructor(
     webSearchTool: WebSearchTool,
     webFetchTool: WebFetchTool,
+    private val gitHubTools: GitHubToolSet,
+    private val settingsRepository: SettingsRepository,
+    private val gitHubCredentials: GitHubCredentials,
 ) {
-    private val tools: Map<String, CirrusTool> =
-        listOf(webSearchTool, webFetchTool).associateBy { it.name }
+    private val webTools: List<CirrusTool> = listOf(webSearchTool, webFetchTool)
 
-    val definitions: List<JsonElement> = tools.values.map { it.definition }
+    private val tools: Map<String, CirrusTool> =
+        (webTools + gitHubTools.all).associateBy { it.name }
+
+    val definitions: List<JsonElement>
+        get() = buildList {
+            addAll(webTools.map { it.definition })
+            if (gitHubEnabled) {
+                val writesAllowed = gitHubCredentials.writesAllowed
+                gitHubTools.all
+                    .filter { writesAllowed || it !in gitHubTools.writeTools }
+                    .forEach { add(it.definition) }
+            }
+        }
 
     fun find(name: String): CirrusTool? = tools[name]
+
+    private val gitHubEnabled: Boolean
+        get() = settingsRepository.current.value.gitHubToolsEnabled &&
+            gitHubCredentials.isConfigured
+}
+
+/**
+ * The GitHub tools, grouped so the registry can tell reads from writes.
+ *
+ * Hilt has no multibinding set up in this project, and an explicit list is easier to audit than
+ * an injected set when the question "which of these can change something?" has to have an
+ * obviously correct answer.
+ */
+@Singleton
+class GitHubToolSet @Inject constructor(
+    listRepos: ListReposTool,
+    searchCode: SearchCodeTool,
+    readFile: ReadFileTool,
+    listDirectory: ListDirectoryTool,
+    listIssues: ListIssuesTool,
+    getIssue: GetIssueTool,
+    listPulls: ListPullRequestsTool,
+    getPull: GetPullRequestTool,
+    createIssue: CreateIssueTool,
+    comment: CommentTool,
+    reviewPull: ReviewPullRequestTool,
+) {
+    val writeTools: Set<CirrusTool> = setOf(createIssue, comment, reviewPull)
+
+    val all: List<CirrusTool> = listOf(
+        listRepos,
+        searchCode,
+        readFile,
+        listDirectory,
+        listIssues,
+        getIssue,
+        listPulls,
+        getPull,
+    ) + writeTools
 }
 
 /** `jsonPrimitive.content` throws on JSON null; this returns null instead. */

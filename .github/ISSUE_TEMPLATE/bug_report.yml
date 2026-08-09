@@ -1,0 +1,75 @@
+name: Bug report
+description: Something behaves differently from how it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not use this form for security problems —
+        see [SECURITY.md](../blob/main/SECURITY.md) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+      placeholder: |
+        1. Opened the model picker
+        2. Tapped a cloud model
+        3. Expected it to be selected; the sheet closed without changing the model
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: Cirrus version
+      description: Bottom of the Settings screen.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: "Pixel 8, Android 15"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: host
+    attributes:
+      label: Which host?
+      options:
+        - Ollama cloud (ollama.com)
+        - Local Ollama instance
+        - Other / self-hosted
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: Only if the problem happens with a specific model.
+      placeholder: "qwen3:8b"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        `adb logcat --pid=$(adb shell pidof dev.klaiber.cirrus)` while reproducing.
+        Redact anything sensitive — logs should never contain your API key, but check.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues
+          required: true
+        - label: I am on the latest version
+          required: true

@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    groups:
+      # AndroidX ships these in lockstep; separate PRs would just fight each other.
+      androidx:
+        patterns: ["androidx.*"]
+      kotlin:
+        patterns: ["org.jetbrains.kotlin*", "com.google.devtools.ksp"]
+    ignore:
+      # Compose, KSP and the serialization plugin must track the Kotlin release the root
+      # buildscript pins. Bumping one alone breaks the build, so these move by hand.
+      - dependency-name: "androidx.compose.compiler:*"
+      - dependency-name: "com.google.devtools.ksp:*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels: [dependencies]

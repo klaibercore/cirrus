@@ -159,6 +159,35 @@ fun SettingsScreen(
                 onChange = { viewModel.setContextMessageLimit(it.toInt()) },
             )
 
+            SectionHeader("GitHub")
+            GitHubTokenField(
+                hasToken = state.settings.hasGitHubToken,
+                onSave = viewModel::saveGitHubToken,
+                onClear = viewModel::clearGitHubToken,
+            )
+            SwitchRow(
+                title = "GitHub tools",
+                subtitle = "Let the model read your repositories, issues and pull requests",
+                help = "Adds tools the model can call mid-answer: list repositories, search " +
+                    "code, read files, and read issues and pull requests — private ones " +
+                    "included, as far as your token reaches. Requests go to api.github.com and " +
+                    "nowhere else, and your Ollama key is never sent there.",
+                checked = state.settings.gitHubToolsEnabled,
+                onCheckedChange = viewModel::setGitHubToolsEnabled,
+                enabled = state.settings.hasGitHubToken,
+            )
+            SwitchRow(
+                title = "Allow write actions",
+                subtitle = "Opening issues, commenting, posting reviews",
+                help = "Off by default, and worth leaving off. Reading is recoverable; opening " +
+                    "an issue or approving a pull request is public and decided by a model " +
+                    "rather than by you. With this off, the write tools are not even offered, " +
+                    "so the model cannot try.",
+                checked = state.settings.gitHubWritesAllowed,
+                onCheckedChange = viewModel::setGitHubWritesAllowed,
+                enabled = state.settings.hasGitHubToken && state.settings.gitHubToolsEnabled,
+            )
+
             SectionHeader("Voice")
             SwitchRow(
                 title = "Voice input",
@@ -435,6 +464,81 @@ private fun ConnectionStatusRow(hasKey: Boolean, status: ConnectionStatus) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun GitHubTokenField(
+    hasToken: Boolean,
+    onSave: (String) -> Unit,
+    onClear: () -> Unit,
+) {
+    var draft by remember { mutableStateOf("") }
+    var visible by remember { mutableStateOf(false) }
+
+    Column {
+        LabelWithHelp(
+            label = "Personal access token",
+            help = "A fine-grained or classic GitHub token. Classic tokens need the `repo` " +
+                "scope to reach private repositories; a fine-grained token needs read access " +
+                "to Contents, Issues and Pull requests, plus write on those you want the model " +
+                "to be able to change. Create one at github.com/settings/tokens. It is stored " +
+                "on this device only, encrypted with a device-bound key.",
+        )
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            label = { Text(if (hasToken) "Replace token" else "GitHub token") },
+            placeholder = { Text("github_pat_… or ghp_…") },
+            singleLine = true,
+            visualTransformation = if (visible) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            trailingIcon = {
+                IconButton(onClick = { visible = !visible }) {
+                    Icon(
+                        imageVector = if (visible) {
+                            Icons.Outlined.VisibilityOff
+                        } else {
+                            Icons.Outlined.Visibility
+                        },
+                        contentDescription = if (visible) "Hide token" else "Show token",
+                    )
+                }
+            },
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    onSave(draft)
+                    draft = ""
+                },
+                enabled = draft.isNotBlank(),
+            ) {
+                Text("Save token")
+            }
+            if (hasToken) {
+                TextButton(onClick = onClear) { Text("Remove") }
+            }
+        }
+
+        Text(
+            text = if (hasToken) {
+                "A token is stored, encrypted with a device-bound key."
+            } else {
+                "Without a token the GitHub tools stay hidden from the model."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 

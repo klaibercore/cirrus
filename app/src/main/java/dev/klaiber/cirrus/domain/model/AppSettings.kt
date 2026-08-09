@@ -36,6 +36,14 @@ data class AppSettings(
     val contextMessageLimit: Int = 0,
     val sendOnEnter: Boolean = false,
     /** Shows the microphone in the composer. */
+    /** Offers the GitHub tools to the model. Requires a token to have any effect. */
+    val gitHubToolsEnabled: Boolean = false,
+    val hasGitHubToken: Boolean = false,
+    /**
+     * Lets the model open issues, comment and post reviews. Default off: reading is recoverable,
+     * writing is not, and a tool call is decided by a model rather than by the user.
+     */
+    val gitHubWritesAllowed: Boolean = false,
     val voiceInputEnabled: Boolean = true,
     /**
      * Prefer Android's offline recogniser, so dictated audio never leaves the device. Falls back

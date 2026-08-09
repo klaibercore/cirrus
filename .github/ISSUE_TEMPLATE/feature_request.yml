@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest a capability Cirrus does not have
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cirrus is a focused client. The most useful thing you can do here is describe the
+        **problem** rather than the solution — the best fix is often not the one either of us
+        thought of first.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you running into?
+      description: What are you trying to do, and where does Cirrus get in the way?
+      placeholder: |
+        I switch between a local model at home and the cloud one on mobile data, and
+        changing the host means retyping the whole URL every time.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would a good solution look like?
+      description: Optional. If you have one in mind, describe it.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried instead?
+      description: Workarounds you are using today, or other apps that solve this well.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues
+          required: true
