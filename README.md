@@ -196,6 +196,27 @@ tested against a mock server rather than a device.
 
 ---
 
+## Releases
+
+Every `vX.Y.Z` tag builds a signed APK and publishes it to the
+[Releases page](https://github.com/klaibercore/cirrus/releases) with a `.sha256` beside it.
+
+[Obtainium](https://github.com/ImranR98/Obtainium) tracks those releases directly — add
+`https://github.com/klaibercore/cirrus` as an app and it updates itself from then on. Or download
+the APK and install it by hand.
+
+Verify what you downloaded:
+
+```bash
+sha256sum -c cirrus-1.0.0-release.apk.sha256
+apksigner verify --print-certs cirrus-1.0.0-release.apk
+```
+
+The certificate fingerprint is identical across every release. If it ever changes, the build did
+not come from here. [docs/RELEASING.md](docs/RELEASING.md) covers cutting one.
+
+---
+
 ## Building
 
 ```bash

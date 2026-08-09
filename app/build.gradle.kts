@@ -1,9 +1,48 @@
+// Explicit, because inside a build script `java` resolves to the Gradle extension, not the package.
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+}
+
+/**
+ * Release signing material, from `keystore.properties` locally or the environment in CI.
+ *
+ * Both are gitignored or ephemeral; nothing here is ever committed. When neither is present the
+ * result is null and the release build simply goes unsigned, so cloning the repo and running
+ * `assembleRelease` still works for anyone who is not cutting an official build.
+ *
+ * See docs/RELEASING.md for how to generate the keystore and populate the CI secrets.
+ */
+val releaseSigning: Map<String, String>? = run {
+    val properties = rootProject.file("keystore.properties")
+    val fromFile = if (properties.exists()) {
+        Properties().apply { properties.inputStream().use(::load) }
+            .let { loaded ->
+                mapOf(
+                    "storeFile" to loaded.getProperty("storeFile").orEmpty(),
+                    "storePassword" to loaded.getProperty("storePassword").orEmpty(),
+                    "keyAlias" to loaded.getProperty("keyAlias").orEmpty(),
+                    "keyPassword" to loaded.getProperty("keyPassword").orEmpty(),
+                )
+            }
+    } else {
+        mapOf(
+            "storeFile" to (System.getenv("KEYSTORE_FILE") ?: "keystore/release.jks"),
+            "storePassword" to System.getenv("KEYSTORE_PASSWORD").orEmpty(),
+            "keyAlias" to System.getenv("KEY_ALIAS").orEmpty(),
+            "keyPassword" to System.getenv("KEY_PASSWORD").orEmpty(),
+        )
+    }
+    // A half-populated config is worse than none: it fails deep inside the signing task with a
+    // message that does not mention which value was missing.
+    fromFile.takeIf { values ->
+        values.values.none { it.isBlank() } && rootProject.file(values.getValue("storeFile")).exists()
+    }
 }
 
 android {
@@ -20,6 +59,23 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigning.getValue("storeFile"))
+                storePassword = releaseSigning.getValue("storePassword")
+                keyAlias = releaseSigning.getValue("keyAlias")
+                keyPassword = releaseSigning.getValue("keyPassword")
+                // v1 (JAR signing) is dead weight above minSdk 24. Both v2 and v3 are left on,
+                // though at minSdk 29 apksigner emits v3 only — v3 has been understood since
+                // API 28, so a v2 block would go unread.
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -32,6 +88,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

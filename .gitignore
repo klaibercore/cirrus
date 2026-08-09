@@ -15,3 +15,8 @@ local.properties
 
 # Never commit an API key.
 secrets.properties
+
+# Release signing. The keystore itself is the one secret that cannot be rotated
+# without orphaning every installed copy of the app — see docs/RELEASING.md.
+keystore/
+keystore.properties
