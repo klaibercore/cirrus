@@ -50,7 +50,7 @@ class ConversationRepository @Inject constructor(
         systemPrompt: String? = null,
         params: GenerationParams = GenerationParams.Default,
         toolsEnabled: Boolean = false,
-        title: String = DEFAULT_TITLE,
+        title: String = Conversation.DEFAULT_TITLE,
     ): Conversation {
         val now = System.currentTimeMillis()
         val conversation = Conversation(
@@ -73,8 +73,11 @@ class ConversationRepository @Inject constructor(
         )
     }
 
-    suspend fun rename(id: String, title: String) =
-        conversationDao.rename(id, title.trim().ifEmpty { DEFAULT_TITLE }, System.currentTimeMillis())
+    suspend fun rename(id: String, title: String) = conversationDao.rename(
+        id,
+        title.trim().ifEmpty { Conversation.DEFAULT_TITLE },
+        System.currentTimeMillis(),
+    )
 
     /** Records a title the model wrote, along with the moment it was written. */
     suspend fun applyAutoTitle(id: String, title: String, now: Long = System.currentTimeMillis()) {
@@ -222,7 +225,6 @@ class ConversationRepository @Inject constructor(
     suspend fun presetCount(): Int = presetDao.count()
 
     private companion object {
-        const val DEFAULT_TITLE = "New chat"
         const val MAX_TITLE_LENGTH = 60
     }
 }

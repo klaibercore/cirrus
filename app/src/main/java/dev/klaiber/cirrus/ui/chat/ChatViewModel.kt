@@ -11,6 +11,7 @@ import dev.klaiber.cirrus.data.repository.ConversationRepository
 import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.ChatEngine
+import dev.klaiber.cirrus.domain.ConversationTitler
 import dev.klaiber.cirrus.domain.TurnEvent
 import dev.klaiber.cirrus.domain.model.Attachment
 import dev.klaiber.cirrus.domain.model.ChatMessage
@@ -45,6 +46,7 @@ class ChatViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val modelRepository: ModelRepository,
     private val chatEngine: ChatEngine,
+    private val conversationTitler: ConversationTitler,
     private val attachmentImporter: AttachmentImporter,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -415,10 +417,12 @@ class ChatViewModel @Inject constructor(
                     }
                 }
                 finalize(errorMessage = null)
-                maybeGenerateTitle(conversationId)
+                conversationTitler.onTurnFinished(conversationId)
             } catch (cancellation: CancellationException) {
                 // Preserve whatever streamed before the user hit stop.
                 withContext(NonCancellable) { finalize(errorMessage = null) }
+                // Titling runs on the application scope, so a stopped turn still gets named.
+                conversationTitler.onTurnFinished(conversationId)
                 throw cancellation
             } catch (error: Throwable) {
                 finalize(errorMessage = describe(error))
@@ -463,56 +467,6 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Keeps the thread title in step with what the conversation has become.
-     *
-     * A long thread drifts away from its opening question, so the title is re-summarised as it
-     * grows — but at most once every [RETITLE_INTERVAL_MS], because each pass is an extra
-     * request. A title the user typed themselves is never touched.
-     */
-    private suspend fun maybeGenerateTitle(conversationId: String) {
-        val settings = settingsRepository.current.value
-        if (!settings.autoTitleConversations) return
-        val conversation = conversationRepository.getConversation(conversationId) ?: return
-
-        val now = System.currentTimeMillis()
-        val lastTitledAt = conversation.autoTitledAt
-        val shouldTitle = when {
-            // Still the placeholder: name it immediately, no waiting.
-            lastTitledAt == null -> conversation.title == DEFAULT_TITLE
-            else -> now - lastTitledAt >= RETITLE_INTERVAL_MS
-        }
-        if (!shouldTitle) return
-
-        val transcript = summarisableTranscript(conversationId) ?: return
-        chatEngine.suggestTitle(conversation.model, transcript)?.let { title ->
-            conversationRepository.applyAutoTitle(conversationId, title, now)
-        }
-    }
-
-    /**
-     * A digest of the conversation for the titler: the opening exchange, which sets the topic,
-     * plus the latest turns, which show where it has got to. The middle is dropped — it is the
-     * least informative part and the most expensive to send.
-     */
-    private suspend fun summarisableTranscript(conversationId: String): String? {
-        val messages = conversationRepository.getMessages(conversationId)
-            .filter { it.role == Role.USER || it.role == Role.ASSISTANT }
-            .filter { it.errorMessage == null && it.content.isNotBlank() }
-        if (messages.isEmpty()) return null
-
-        val excerpt = if (messages.size <= TITLE_CONTEXT_MESSAGES) {
-            messages
-        } else {
-            messages.take(TITLE_HEAD_MESSAGES) +
-                messages.takeLast(TITLE_CONTEXT_MESSAGES - TITLE_HEAD_MESSAGES)
-        }
-        return excerpt.joinToString("\n\n") { message ->
-            val speaker = if (message.role == Role.USER) "User" else "Assistant"
-            "$speaker: ${message.content.take(TITLE_MESSAGE_CHARS)}"
-        }
-    }
-
     private fun describe(error: Throwable): String = when (error) {
         is OllamaException.MissingApiKey -> "Add your Ollama API key in Settings to start chatting."
         is OllamaException.Unauthorized -> "The API key was rejected. Check it in Settings."
@@ -532,16 +486,5 @@ class ChatViewModel @Inject constructor(
     private companion object {
         const val ARG_CONVERSATION_ID = "conversationId"
         const val PERSIST_INTERVAL_MS = 600L
-        const val DEFAULT_TITLE = "New chat"
-
-        /**
-         * How long an auto-title stands before the thread is summarised again. Long enough that
-         * a busy half-hour of chat costs one extra request, not one per turn.
-         */
-        const val RETITLE_INTERVAL_MS = 30 * 60 * 1000L
-
-        const val TITLE_CONTEXT_MESSAGES = 8
-        const val TITLE_HEAD_MESSAGES = 2
-        const val TITLE_MESSAGE_CHARS = 400
     }
 }

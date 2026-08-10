@@ -21,6 +21,26 @@ data class Conversation(
     val autoTitledAt: Long? = null,
 ) {
     val isFork: Boolean get() = forkedFromConversationId != null
+
+    /** True while the thread still carries the placeholder name rather than one of its own. */
+    val isUntitled: Boolean get() = title == DEFAULT_TITLE
+
+    companion object {
+        /**
+         * The name a thread carries until it is titled.
+         *
+         * Auto-titling compares against this to decide whether a thread has ever been named, so
+         * it lives here rather than being spelled out separately in every layer that needs it.
+         */
+        const val DEFAULT_TITLE = "New chat"
+
+        /**
+         * Stamped on a locally derived title (see `ConversationTitler`) so it reads as "titled,
+         * but long ago": the thread stops being a placeholder, yet the next turn is free to
+         * replace it with something the model wrote.
+         */
+        const val FALLBACK_TITLED_AT = 0L
+    }
 }
 
 /** A reusable system prompt + parameter bundle, equivalent to a lightweight "project". */

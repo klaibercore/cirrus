@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.0.1] - 2026-08-10
+
+### Fixed
+
+- **Threads no longer stay called "New chat".** Auto-titling asked for a title in a way that
+  quietly produced nothing on the models most people run it against. Ollama enables thinking by
+  default on any model that supports it, so a reasoning model spent the whole 24-token title
+  budget on its reasoning and returned an empty answer; one that emits raw `<think>` tags inline
+  titled the thread `<think>` instead. Thinking is now switched off explicitly where the model
+  has the capability (and the field is omitted entirely where it does not), the budget is wide
+  enough to survive a model that reasons anyway, and any reasoning left in the reply is stripped
+  before the title is taken.
+- **Titling no longer dies when you leave the thread.** It ran inside the chat screen's
+  generation job, so switching conversations or backing out in the second after an answer landed
+  cancelled the request and left the thread unnamed for good. It now runs on the application
+  scope, and stopping a generation still names the thread it produced.
+- **A thread always ends up named.** If the host is unreachable or the model returns nothing
+  usable, the thread takes its name from its opening message instead, and the next turn still
+  tries for a real summary.
+
 ## [1.0.0] - 2026-08-09
 
 First release. An Android Ollama client for developers who want their local models to actually
@@ -53,5 +73,6 @@ do things.
   or bridges its tools into the registry.
 - LaTeX is mapped to Unicode, not typeset. There is no layout, so fractions render as `a/b`.
 
-[Unreleased]: https://github.com/klaibercore/cirrus/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/klaibercore/cirrus/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/klaibercore/cirrus/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/klaibercore/cirrus/releases/tag/v1.0.0

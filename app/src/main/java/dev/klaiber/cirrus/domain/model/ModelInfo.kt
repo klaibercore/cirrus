@@ -101,10 +101,9 @@ data class ModelInfo(
 
     private val inferredCapabilities: Set<ModelCapability>
         get() = buildSet {
-            val lowercase = name.lowercase()
             add(ModelCapability.COMPLETION)
-            if (THINKING_PATTERNS.any { it in lowercase }) add(ModelCapability.THINKING)
-            if (VISION_PATTERNS.any { it in lowercase }) add(ModelCapability.VISION)
+            if (mayThink(name)) add(ModelCapability.THINKING)
+            if (VISION_PATTERNS.any { it in name.lowercase() }) add(ModelCapability.VISION)
         }
 
     /**
@@ -116,8 +115,18 @@ data class ModelInfo(
     private fun trimZero(value: Double): String =
         String.format(java.util.Locale.ROOT, "%.1f", value).removeSuffix(".0")
 
-    private companion object {
-        val BADGE_ORDER = listOf(
+    companion object {
+        /**
+         * Whether a model is likely to reason before answering, judged from its name alone.
+         *
+         * Callers that hold a full [ModelInfo] should ask [supportsThinking] instead. This is for
+         * the case where only a name is known — the catalogue has not been fetched yet, or the
+         * host has no `/api/show` — and guessing wrong is cheaper than not asking at all.
+         */
+        fun mayThink(name: String): Boolean =
+            name.lowercase().let { lowercase -> THINKING_PATTERNS.any { it in lowercase } }
+
+        private val BADGE_ORDER = listOf(
             ModelCapability.VISION,
             ModelCapability.THINKING,
             ModelCapability.TOOLS,
@@ -126,11 +135,11 @@ data class ModelInfo(
             ModelCapability.INSERT,
             ModelCapability.EMBEDDING,
         )
-        val THINKING_PATTERNS = listOf(
+        private val THINKING_PATTERNS = listOf(
             "gpt-oss", "qwen3", "qwen3.5", "deepseek-v3", "deepseek-v4", "deepseek-r1",
             "glm-4", "glm-5", "minimax", "kimi", "nemotron", "magistral",
         )
-        val VISION_PATTERNS = listOf(
+        private val VISION_PATTERNS = listOf(
             "llava", "bakllava", "moondream", "llama3.2-vision", "llama4", "gemma3",
             "gemma4", "qwen2.5vl", "qwen3-vl", "minicpm-v", "mistral-small3", "pixtral",
         )

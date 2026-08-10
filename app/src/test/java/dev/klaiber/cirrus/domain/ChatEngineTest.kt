@@ -35,12 +35,14 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -145,6 +147,16 @@ class ChatEngineTest {
             """
             {"model":"qwen3","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"web_search","arguments":{"query":"test","max_results":3}}}]},"done":false}
             {"model":"qwen3","done":true,"done_reason":"tool_calls"}
+            """.trimIndent()
+        )
+        .build()
+
+    /** One streamed reply whose whole content is [content], escaped as the wire would carry it. */
+    private fun titleResponse(content: String) = MockResponse.Builder()
+        .body(
+            """
+            {"model":"qwen3","message":{"role":"assistant","content":${JsonPrimitive(content)}},"done":false}
+            {"model":"qwen3","done":true,"done_reason":"stop"}
             """.trimIndent()
         )
         .build()
@@ -341,6 +353,54 @@ class ChatEngineTest {
             transcript = "User: What is quantum computing?\n\nAssistant: It is a field.",
         )
         assertEquals("Quantum Computing", title)
+    }
+
+    @Test
+    fun `omits think for a model that cannot think`() = runTest {
+        server.enqueue(titleResponse("Centering a div"))
+        engine.suggestTitle(model = "llama3.2", transcript = "User: hi", supportsThinking = false)
+
+        val body = server.takeRequest().body!!.utf8()
+        assertFalse(body.contains("\"think\""))
+        assertTrue(body.contains("\"num_predict\":24"))
+    }
+
+    /**
+     * Ollama enables thinking by default on a model that supports it, so the flag has to be sent
+     * explicitly — and the budget has to survive a model that reasons anyway.
+     */
+    @Test
+    fun `disables thinking and widens the budget for a thinking model`() = runTest {
+        server.enqueue(titleResponse("Centering a div"))
+        engine.suggestTitle(model = "qwen3", transcript = "User: hi", supportsThinking = true)
+
+        val body = server.takeRequest().body!!.utf8()
+        assertTrue(body.contains("\"think\":false"))
+        assertTrue(body.contains("\"num_predict\":320"))
+    }
+
+    @Test
+    fun `ignores reasoning a model leaves in the content`() = runTest {
+        val reasoned = "<think>\nThe user asks about Room.\n</think>\n\nRoom schema migrations"
+        server.enqueue(titleResponse(reasoned))
+
+        val title = engine.suggestTitle("qwen3", "User: hi", supportsThinking = true)
+        assertEquals("Room schema migrations", title)
+    }
+
+    @Test
+    fun `returns null when the budget was spent entirely on reasoning`() = runTest {
+        server.enqueue(titleResponse("<think>\nOkay, the user wants a title for"))
+        assertNull(engine.suggestTitle("qwen3", "User: hi", supportsThinking = true))
+    }
+
+    @Test
+    fun `strips quoting and labels a model wraps the title in`() {
+        assertEquals("Quantum computing", engine.extractTitle("**Title:** Quantum computing."))
+        assertEquals("Quantum computing", engine.extractTitle("\"Quantum computing\""))
+        assertEquals("Quantum computing", engine.extractTitle("- Quantum computing"))
+        assertEquals("Quantum computing", engine.extractTitle("## Quantum computing"))
+        assertNull(engine.extractTitle("   \n\n  "))
     }
 
     @Test

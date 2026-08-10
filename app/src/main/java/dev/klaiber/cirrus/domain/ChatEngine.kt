@@ -175,9 +175,22 @@ class ChatEngine @Inject constructor(
      *
      * [transcript] is a digest of the conversation so far, so a thread that has wandered away
      * from its opening question can be renamed to match what it actually became.
+     *
+     * [supportsThinking] shapes the request, not just the prompt. Ollama turns thinking *on* by
+     * default for any model that has the capability, and a model that reasons first spends a
+     * title-sized budget entirely on the reasoning: the content channel then arrives empty and
+     * the thread is left called "New chat". Models without the capability are sent no `think`
+     * field at all, since the only value they accept is the one that does nothing.
      */
-    suspend fun suggestTitle(model: String, transcript: String): String? =
+    suspend fun suggestTitle(
+        model: String,
+        transcript: String,
+        supportsThinking: Boolean = false,
+    ): String? =
         runCatching {
+            // Some reasoning models ignore `think: false` and narrate anyway; give them enough
+            // room to get past it and still reach the title.
+            val budget = if (supportsThinking) THINKING_TITLE_TOKEN_BUDGET else TITLE_TOKEN_BUDGET
             val request = ChatRequestDto(
                 model = model,
                 stream = true,
@@ -186,32 +199,53 @@ class ChatEngine @Inject constructor(
                         role = Role.SYSTEM.wire,
                         content = "You write short chat titles. Read the conversation and reply " +
                             "with a title of at most six words describing what it is about. " +
-                            "No quotes, no punctuation at the end, no preamble.",
+                            "Reply with the title alone: no quotes, no markdown, no reasoning, " +
+                            "no punctuation at the end, no preamble.",
                     ),
                     MessageDto(
                         role = Role.USER.wire,
                         content = transcript.take(TITLE_SOURCE_CHARS),
                     ),
                 ),
-                // Thinking models would otherwise spend their budget on a six-word title.
-                think = JsonPrimitive(false),
+                // Only meaningful — and only accepted — where the model can actually think.
+                think = if (supportsThinking) JsonPrimitive(false) else null,
                 options = buildJsonObject {
                     put("temperature", JsonPrimitive(0.2))
-                    put("num_predict", JsonPrimitive(TITLE_TOKEN_BUDGET))
+                    put("num_predict", JsonPrimitive(budget))
                 },
             )
             val builder = StringBuilder()
             client.streamChat(request).collect { chunk ->
                 chunk.message?.content?.let(builder::append)
             }
-            builder.toString()
-                .lineSequence()
-                .map { it.trim() }
-                .firstOrNull { it.isNotEmpty() }
-                ?.trim('"', '\'', '.', ' ')
-                ?.take(MAX_TITLE_CHARS)
-                ?.takeIf { it.isNotBlank() }
+            extractTitle(builder.toString())
         }.getOrNull()
+
+    /**
+     * Pulls a usable title out of whatever the model produced.
+     *
+     * Reasoning lands in its own field only when the server parsed it; a model whose template
+     * emits raw `<think>` tags into the content would otherwise have its thread titled
+     * "&lt;think&gt;". Anything still inside an unterminated tag is reasoning that ran out of
+     * budget, so it is discarded rather than mistaken for an answer.
+     */
+    internal fun extractTitle(raw: String): String? {
+        val closed = raw.replace(THINK_BLOCK, " ")
+        // Whatever follows an unclosed opener is reasoning the budget cut short, not an answer.
+        return THINK_OPEN.split(closed, limit = 2).first()
+            .lineSequence()
+            .map(::tidyTitleLine)
+            .firstOrNull { it.isNotEmpty() }
+            ?.take(MAX_TITLE_CHARS)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    /** Strips the wrapping a model reaches for anyway: quotes, markdown, a "Title:" label. */
+    private fun tidyTitleLine(line: String): String {
+        val unwrapped = line.trim().trim(*TITLE_TRIM_CHARS)
+        return TITLE_LABEL.replace(unwrapped, "").trim(*TITLE_TRIM_CHARS).trim()
+    }
 
     private fun buildRequest(
         conversation: Conversation,
@@ -331,6 +365,14 @@ class ChatEngine @Inject constructor(
         const val MAX_DOCUMENT_CHARS = 100_000
         const val TITLE_SOURCE_CHARS = 2_000
         const val TITLE_TOKEN_BUDGET = 24
+
+        /** Room for a reasoning model to narrate first and still land on a title. */
+        const val THINKING_TITLE_TOKEN_BUDGET = 320
         const val MAX_TITLE_CHARS = 60
+
+        val THINK_BLOCK = Regex("<think(?:ing)?>.*?</think(?:ing)?>", RegexOption.DOT_MATCHES_ALL)
+        val THINK_OPEN = Regex("<think(?:ing)?>")
+        val TITLE_LABEL = Regex("^title\\s*[:\\-]\\s*", RegexOption.IGNORE_CASE)
+        val TITLE_TRIM_CHARS = charArrayOf('"', '\'', '*', '#', '`', '-', '.', '>', ' ', '\t')
     }
 }
