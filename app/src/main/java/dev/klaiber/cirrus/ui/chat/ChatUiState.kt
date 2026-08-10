@@ -21,7 +21,7 @@ data class ChatUiState(
     /** True until the API key exists; the composer is replaced by an onboarding prompt. */
     val needsApiKey: Boolean = false,
 ) {
-    val title: String get() = conversation?.title ?: "New chat"
+    val title: String get() = conversation?.title ?: Conversation.DEFAULT_TITLE
 
     val model: String get() = conversation?.model ?: settings.defaultModel
 

@@ -40,6 +40,7 @@ app/src/main/java/dev/klaiber/cirrus/
 │   └── theme/              # Color, Type, Theme (Material 3, dynamic color support)
 ├── domain/
 │   ├── ChatEngine.kt       # the turn protocol: build request → stream → service tool calls
+│   ├── ConversationTitler.kt # when a thread is named, from what, and what to do on failure
 │   ├── model/              # Conversation, ChatMessage, GenerationParams, ModelInfo, ...
 │   └── tools/              # CirrusTool interface, ToolRegistry, web tools
 │       └── github/         # 11 GitHub tools + shared schema/argument plumbing
@@ -63,6 +64,11 @@ app/src/main/java/dev/klaiber/cirrus/
   conversations or tool loops. `streamChat` returns a cold `Flow<ChatChunkDto>` of NDJSON
   lines; cancelling the collector cancels the underlying OkHttp call. `showModel` reads
   `/api/show`, which is the only authoritative source of a model's capabilities.
+- **`ConversationTitler`** — owns auto-titling: whether a thread is due one, the digest that gets
+  summarised, and the local fallback when the model cannot answer. It runs on the application
+  scope on purpose — titling happens just after an answer lands, which is exactly when people
+  switch threads, and a request cancelled there used to leave the thread called "New chat"
+  forever. `Conversation.autoTitledAt` is the record: null means the name is the user's.
 - **`ToolRegistry`** — maps tool names to `CirrusTool` implementations. `definitions` is
   **computed per turn**, not fixed at construction: which tools are offered depends on the user's
   toggles and whether a GitHub token exists. Sending a schema for a tool that cannot run wastes
@@ -155,8 +161,14 @@ Unit tests live in `app/src/test/java/...` mirroring the main package. Run with
   the outer one) is not disambiguated; `**bold *italic* text**` works.
 - `ApiCredentials.normalizeBaseUrl` strips a trailing `/api` so callers can append `/api/...`.
 - Room is at **schema version 2**. `conversations.autoTitledAt` was added by `MIGRATION_1_2`;
-  null means the title belongs to the user and auto-titling must not touch it. Any further
-  schema change needs a migration and a regenerated `app/schemas/*.json`.
+  null means the title belongs to the user and auto-titling must not touch it. A locally derived
+  fallback title is stamped `Conversation.FALLBACK_TITLED_AT` (the epoch) so it reads as "titled,
+  but long ago" and the next turn is free to replace it. Any further schema change needs a
+  migration and a regenerated `app/schemas/*.json`.
+- Ollama enables thinking by *default* on any model whose `/api/show` reports the capability, so
+  omitting `think` does not mean "no thinking". It also rejects `think: true` outright on a model
+  without the capability. Anything that needs a short answer has to send `think: false`
+  explicitly — and budget for a model that ignores it.
 - GitHub's `/issues` endpoint returns pull requests too. `ListIssuesTool` filters on
   `pull_request == null`; forgetting that double-counts every PR as an issue.
 - Material 3 tooltip types are `@ExperimentalMaterial3Api`. `HelpTooltip`/`HelpBadge` keep them
