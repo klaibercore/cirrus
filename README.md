@@ -74,7 +74,7 @@ already know what a context window is, and gets out of your way.
 | 🤔 **Reasoning traces** | `thinking` deltas stream into a collapsible section, with effort control for models that support it. |
 | 🔧 **Tool calling** | Bounded multi-round tool loops. Web search, page fetch and the GitHub tools. Spend the round budget and the model is asked once more without tools, so a turn ends on an answer rather than on a call nobody ran. |
 | 🐙 **GitHub integration** | Read code in public *and* private repos, search, browse trees, read issues and PR diffs. Opening issues, commenting, posting reviews and committing files are behind a separate, default-off switch. |
-| 🔌 **MCP client** | Model Context Protocol client over both HTTP transports (streamable and SSE), with the transport auto-detected. Not yet reachable from the UI — see below. |
+| 🔌 **MCP servers** | Attach a Model Context Protocol server and its tools join the model's toolbox. Both HTTP transports (streamable and SSE), auto-detected. Adding one connects first and shows you exactly which tools you would be handing over — a server Cirrus cannot reach is a server it will not save. |
 | 🎙️ **Voice dictation** | Speak into the composer with a live level meter. Prefers Android's on-device recogniser, so audio need never leave the phone. |
 | ✍️ **Markdown that survives streaming** | A hand-written CommonMark subset tolerant of half-finished input, with a real lexer for syntax highlighting — not regex passes that mistake `//` inside a string for a comment. LaTeX maths is mapped to Unicode, so `$O(n \log n)$` reads as maths rather than as source. |
 | 🏷️ **Self-maintaining titles** | Threads are named from their content and re-summarised as they grow, throttled so a long session costs a handful of short requests. Rename one yourself and it is never overwritten. |
@@ -147,17 +147,31 @@ Ask things like:
 >
 > *Review PR #12 — focus on error handling, don't approve it.*
 
-### MCP — not wired up yet
+## MCP servers
 
-Cirrus contains a [Model Context Protocol](https://modelcontextprotocol.io) client that speaks
-both HTTP transports: the current streamable-HTTP one and the older two-channel SSE one, chosen
-per server and auto-detected when a server answers with the SSE handshake. It does `initialize`,
-`tools/list` and `tools/call`, and it is covered by tests.
+Attach a [Model Context Protocol](https://modelcontextprotocol.io) server under
+**Settings → Tools → MCP servers** and its tools are offered to the model alongside Cirrus's own,
+governed by the same per-conversation tools switch.
 
-**There is no UI for it yet.** You cannot attach a server from Settings, nothing is persisted,
-and `ToolRegistry` does not offer MCP tools to the model. The client is finished; the wiring
-around it is not. Until that lands, treat MCP as a library inside the app rather than a feature
-of it — tracked as a follow-up to v1.0.0.
+Both HTTP transports are supported — the current streamable-HTTP one and the older two-channel
+SSE one — chosen per server and auto-detected when a server answers with the SSE handshake, so
+attaching an older server costs you no configuration.
+
+**Adding a server connects to it first.** Cirrus runs `initialize` and `tools/list`, then shows
+you the tools you would be handing the model, with the transport it negotiated. A server it
+cannot reach is a server it will not save. A URL that merely parses proves nothing, and a
+misconfigured server otherwise stays quiet until it fails mid-answer, as a tool call the model
+cannot explain. Edit the URL or token after testing and the result is marked stale rather than
+showing a tool count that no longer applies.
+
+Tokens are stored with the same Keystore-backed encryption as your Ollama key, and each one is
+sent only to the server it belongs to — MCP has its own HTTP client precisely so no other
+credential can ride along.
+
+MCP tools are namespaced per server, and a built-in always wins a name collision: a remote server
+cannot take over `web_search` by naming a tool after it. Cirrus does not implement
+server-initiated requests, sampling or resources — a client that only consumes tools never needs
+them.
 
 ---
 
