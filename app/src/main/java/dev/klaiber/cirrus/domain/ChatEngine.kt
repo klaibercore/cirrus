@@ -2,6 +2,7 @@ package dev.klaiber.cirrus.domain
 
 import android.util.Base64
 import dev.klaiber.cirrus.data.remote.OllamaClient
+import dev.klaiber.cirrus.data.remote.OllamaException
 import dev.klaiber.cirrus.data.remote.dto.ChatRequestDto
 import dev.klaiber.cirrus.data.remote.dto.MessageDto
 import dev.klaiber.cirrus.data.remote.dto.ToolCallDto
@@ -16,7 +17,9 @@ import dev.klaiber.cirrus.domain.model.ThinkMode
 import dev.klaiber.cirrus.domain.model.ToolInvocation
 import dev.klaiber.cirrus.domain.tools.ToolRegistry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -65,72 +68,55 @@ class ChatEngine @Inject constructor(
         settings: AppSettings,
     ): Flow<TurnEvent> = flow {
         val wireMessages = buildWireMessages(conversation, history, settings).toMutableList()
-        val turnStartedAt = System.currentTimeMillis()
-        var timeToFirstToken: Long? = null
-        var toolIteration = 0
+        val clock = TurnClock()
+        var toolRounds = 0
+        var wrapUpUsed = false
 
         while (true) {
-            val request = buildRequest(conversation, wireMessages, settings)
+            // Once the budget is spent the tools are withheld rather than the turn abandoned, so
+            // the model's last word is an answer instead of a tool call nobody ran.
+            val offerTools = conversation.toolsEnabled && toolRounds < settings.maxToolIterations
+            val request = buildRequest(conversation, wireMessages, settings, offerTools)
             emit(TurnEvent.RequestPrepared(client.encodeRequest(request)))
 
-            val content = StringBuilder()
-            val thinking = StringBuilder()
-            val pendingToolCalls = mutableListOf<ToolCallDto>()
-            var stats = GenerationStats()
+            val round = streamRound(request, clock)
 
-            client.streamChat(request).collect { chunk ->
-                chunk.message?.let { message ->
-                    message.thinking?.takeIf { it.isNotEmpty() }?.let { delta ->
-                        if (timeToFirstToken == null) {
-                            timeToFirstToken = System.currentTimeMillis() - turnStartedAt
-                        }
-                        thinking.append(delta)
-                        emit(TurnEvent.ThinkingDelta(delta))
-                    }
-                    message.content.takeIf { it.isNotEmpty() }?.let { delta ->
-                        if (timeToFirstToken == null) {
-                            timeToFirstToken = System.currentTimeMillis() - turnStartedAt
-                        }
-                        content.append(delta)
-                        emit(TurnEvent.ContentDelta(delta))
-                    }
-                    message.toolCalls?.let(pendingToolCalls::addAll)
-                }
-                if (chunk.done) {
-                    stats = GenerationStats(
-                        totalDurationNs = chunk.totalDuration,
-                        loadDurationNs = chunk.loadDuration,
-                        promptEvalCount = chunk.promptEvalCount,
-                        promptEvalDurationNs = chunk.promptEvalDuration,
-                        evalCount = chunk.evalCount,
-                        evalDurationNs = chunk.evalDuration,
-                        doneReason = chunk.doneReason,
-                        timeToFirstTokenMs = timeToFirstToken,
-                    )
-                }
-            }
-
-            val shouldRunTools = pendingToolCalls.isNotEmpty() &&
-                conversation.toolsEnabled &&
-                toolIteration < settings.maxToolIterations
-            if (!shouldRunTools) {
-                emit(TurnEvent.Finished(stats))
+            if (round.toolCalls.isEmpty() || !conversation.toolsEnabled) {
+                emit(TurnEvent.Finished(round.stats))
                 return@flow
             }
 
             // Replay the model's own tool-call message, then answer each call in order.
             wireMessages += MessageDto(
                 role = Role.ASSISTANT.wire,
-                content = content.toString(),
-                toolCalls = pendingToolCalls.toList(),
+                content = round.content,
+                toolCalls = round.toolCalls,
             )
 
-            for (call in pendingToolCalls) {
-                val invocation = ToolInvocation(
-                    id = UUID.randomUUID().toString(),
-                    name = call.function.name,
-                    argumentsJson = call.function.arguments.toString(),
-                )
+            if (!offerTools) {
+                // The budget is spent and the model asked for another round anyway. One more
+                // pass — with the calls answered by an explanation rather than a result — turns a
+                // turn that stopped mid-plan into one that says what it found. Only one, though:
+                // a model that keeps asking would otherwise loop forever.
+                if (wrapUpUsed) {
+                    emit(TurnEvent.Finished(round.stats))
+                    return@flow
+                }
+                wrapUpUsed = true
+                for (call in round.toolCalls) {
+                    val declined = newInvocation(call).copy(
+                        errorMessage = toolBudgetMessage(settings.maxToolIterations),
+                        durationMs = 0L,
+                    )
+                    emit(TurnEvent.ToolStarted(declined.copy(errorMessage = null)))
+                    emit(TurnEvent.ToolFinished(declined))
+                    wireMessages += toolResultMessage(declined)
+                }
+                continue
+            }
+
+            for (call in round.toolCalls) {
+                val invocation = newInvocation(call)
                 emit(TurnEvent.ToolStarted(invocation))
 
                 val startedAt = System.currentTimeMillis()
@@ -157,17 +143,103 @@ class ChatEngine @Inject constructor(
                     )
                 }
                 emit(TurnEvent.ToolFinished(outcome))
-
-                wireMessages += MessageDto(
-                    role = Role.TOOL.wire,
-                    content = outcome.resultJson
-                        ?: """{"error":${JsonPrimitive(outcome.errorMessage ?: "failed")}}""",
-                    toolName = outcome.name,
-                )
+                wireMessages += toolResultMessage(outcome)
             }
-            toolIteration++
+            toolRounds++
         }
     }
+
+    /** What one request/response round of a turn produced. */
+    private data class Round(
+        val content: String,
+        val toolCalls: List<ToolCallDto>,
+        val stats: GenerationStats,
+    )
+
+    /** Time-to-first-token is measured across the whole turn, not per round. */
+    private class TurnClock {
+        val startedAt: Long = System.currentTimeMillis()
+        var timeToFirstToken: Long? = null
+
+        fun markFirstToken() {
+            if (timeToFirstToken == null) timeToFirstToken = System.currentTimeMillis() - startedAt
+        }
+    }
+
+    /**
+     * Streams one round, re-issuing it if the connection dies before producing anything.
+     *
+     * A retry is only safe while the round is still silent: once deltas are on screen, starting
+     * over would repeat them, so a stream cut short after that is surfaced as the error it is.
+     */
+    private suspend fun FlowCollector<TurnEvent>.streamRound(
+        request: ChatRequestDto,
+        clock: TurnClock,
+    ): Round {
+        var attempt = 0
+        while (true) {
+            val content = StringBuilder()
+            val toolCalls = mutableListOf<ToolCallDto>()
+            var stats = GenerationStats()
+            var produced = false
+
+            try {
+                client.streamChat(request).collect { chunk ->
+                    chunk.message?.let { message ->
+                        message.thinking?.takeIf { it.isNotEmpty() }?.let { delta ->
+                            clock.markFirstToken()
+                            produced = true
+                            emit(TurnEvent.ThinkingDelta(delta))
+                        }
+                        message.content.takeIf { it.isNotEmpty() }?.let { delta ->
+                            clock.markFirstToken()
+                            produced = true
+                            content.append(delta)
+                            emit(TurnEvent.ContentDelta(delta))
+                        }
+                        // Tool calls are not emitted until the round completes, so a round that
+                        // only collected these is still safe to restart.
+                        message.toolCalls?.let(toolCalls::addAll)
+                    }
+                    if (chunk.done) {
+                        stats = GenerationStats(
+                            totalDurationNs = chunk.totalDuration,
+                            loadDurationNs = chunk.loadDuration,
+                            promptEvalCount = chunk.promptEvalCount,
+                            promptEvalDurationNs = chunk.promptEvalDuration,
+                            evalCount = chunk.evalCount,
+                            evalDurationNs = chunk.evalDuration,
+                            doneReason = chunk.doneReason,
+                            timeToFirstTokenMs = clock.timeToFirstToken,
+                        )
+                    }
+                }
+                return Round(content.toString(), toolCalls.toList(), stats)
+            } catch (truncated: OllamaException.Truncated) {
+                if (produced || attempt >= MAX_SILENT_RETRIES) throw truncated
+                attempt++
+                delay(RETRY_BACKOFF_MS * attempt)
+            }
+        }
+    }
+
+    private fun newInvocation(call: ToolCallDto) = ToolInvocation(
+        id = UUID.randomUUID().toString(),
+        name = call.function.name,
+        argumentsJson = call.function.arguments.toString(),
+    )
+
+    private fun toolResultMessage(invocation: ToolInvocation) = MessageDto(
+        role = Role.TOOL.wire,
+        content = invocation.resultJson
+            ?: """{"error":${JsonPrimitive(invocation.errorMessage ?: "failed")}}""",
+        toolName = invocation.name,
+    )
+
+    /** Addressed to the model: it is the one that has to decide what to do about it. */
+    private fun toolBudgetMessage(limit: Int): String =
+        "Tool budget spent: this turn already used its $limit tool rounds, so no tool was run. " +
+            "Answer now with what you have, and say plainly what is still unfinished."
 
     /**
      * Asks the model for a short thread title. Returns null on any failure, since a missing
@@ -251,6 +323,7 @@ class ChatEngine @Inject constructor(
         conversation: Conversation,
         messages: List<MessageDto>,
         settings: AppSettings,
+        offerTools: Boolean = conversation.toolsEnabled,
     ): ChatRequestDto {
         val params = conversation.params
         return ChatRequestDto(
@@ -258,7 +331,7 @@ class ChatEngine @Inject constructor(
             messages = messages,
             stream = true,
             think = params.thinkMode.toJsonElement(),
-            tools = if (conversation.toolsEnabled) toolRegistry.definitions else null,
+            tools = if (offerTools) toolRegistry.definitions else null,
             format = params.responseFormat?.let(::parseFormat),
             options = buildOptions(params),
             keepAlive = params.keepAlive,
@@ -362,6 +435,10 @@ class ChatEngine @Inject constructor(
     }
 
     private companion object {
+        /** How many times a round that produced nothing may be re-issued after a dropped stream. */
+        const val MAX_SILENT_RETRIES = 2
+        const val RETRY_BACKOFF_MS = 500L
+
         const val MAX_DOCUMENT_CHARS = 100_000
         const val TITLE_SOURCE_CHARS = 2_000
         const val TITLE_TOKEN_BUDGET = 24

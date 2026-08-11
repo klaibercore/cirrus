@@ -67,6 +67,7 @@ class OllamaClient @Inject constructor(
                 throw errorFor(httpResponse, request.model)
             }
             val source = httpResponse.body.source()
+            var sawDone = false
             while (true) {
                 val line = try {
                     source.readUtf8Line()
@@ -83,8 +84,16 @@ class OllamaClient @Inject constructor(
                 // Some failures arrive as a 200 with an error field on a single line.
                 chunk.error?.let { throw OllamaException.ServerError(200, it) }
                 emit(chunk)
-                if (chunk.done) break
+                if (chunk.done) {
+                    sawDone = true
+                    break
+                }
             }
+            // A stream that just stops is not a finished answer: the server died, the network
+            // moved, or the process was frozen mid-read. Completing quietly here is what makes a
+            // half-written reply look like the model's final word, so say so instead.
+            // Cancellation never reaches this line — `emit` throws first.
+            if (!sawDone) throw OllamaException.Truncated()
         }
     }.flowOn(Dispatchers.IO)
 

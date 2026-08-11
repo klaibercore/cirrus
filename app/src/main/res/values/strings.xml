@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Cirrus</string>
+
+    <!-- Shown while a reply is still streaming, which is also what keeps it streaming. -->
+    <string name="notification_channel_generating">Replies in progress</string>
+    <string name="notification_channel_generating_description">Shown while a model is still
+        answering, so Android keeps the reply running when Cirrus is not on screen.</string>
+    <string name="notification_generating_title">Cirrus is answering</string>
+    <string name="notification_generating_text">Writing a reply…</string>
+    <string name="notification_generating_many">Writing %1$d replies…</string>
+    <string name="notification_stop">Stop</string>
 </resources>

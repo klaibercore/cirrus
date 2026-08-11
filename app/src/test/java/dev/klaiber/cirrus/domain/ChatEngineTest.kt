@@ -301,11 +301,49 @@ class ChatEngineTest {
         assertTrue(toolFinished.invocation.errorMessage!!.contains("Unknown tool"))
     }
 
+    /**
+     * The turn used to end the moment the budget ran out, on whatever the model had said before
+     * reaching for a tool — which reads like the model choosing to stop mid-task. It now gets one
+     * more pass, without tools, to answer with what it has.
+     */
     @Test
-    fun `stops the tool loop at max iterations`() = runTest {
-        // The model calls a tool twice; with maxToolIterations=1 the second call is not serviced.
+    fun `answers instead of stopping when the tool budget is spent`() = runTest {
+        server.enqueue(toolCallResponse()) // Round one: asks for a tool, and gets it.
+        server.enqueue(searchResponse())
+        server.enqueue(toolCallResponse()) // Budget spent, but the model asks again anyway.
+        server.enqueue(simpleResponse()) // The wrap-up round, where it finally answers.
+
+        val events = engine.respond(
+            conversation(toolsEnabled = true),
+            listOf(userMessage("hi")),
+            AppSettings(maxToolIterations = 1),
+        ).toList()
+
+        val ran = events.filterIsInstance<TurnEvent.ToolFinished>()
+        assertEquals(2, ran.size)
+        assertTrue(ran.first().invocation.resultJson!!.contains("https://example.com"))
+        assertTrue(ran.last().invocation.errorMessage!!.contains("Tool budget spent"))
+
+        // The turn's last word is an answer, not an unanswered call.
+        val answer = events.filterIsInstance<TurnEvent.ContentDelta>().joinToString("") { it.text }
+        assertEquals("ok", answer)
+        assertTrue(events.last() is TurnEvent.Finished)
+        assertEquals(4, server.requestCount)
+
+        server.takeRequest() // The first chat request, which did offer tools.
+        server.takeRequest() // The tool's own request.
+        // Nothing is gained by offering tools that can no longer run, and a model that sees them
+        // will keep calling them.
+        assertFalse(server.takeRequest().body!!.utf8().contains("\"tools\""))
+        assertTrue(server.takeRequest().body!!.utf8().contains("Tool budget spent"))
+    }
+
+    @Test
+    fun `stops asking after one wrap-up round`() = runTest {
+        // A model that ignores the missing tool list and keeps calling must not loop forever.
         server.enqueue(toolCallResponse())
         server.enqueue(searchResponse())
+        server.enqueue(toolCallResponse())
         server.enqueue(toolCallResponse())
 
         val events = engine.respond(
@@ -314,9 +352,43 @@ class ChatEngineTest {
             AppSettings(maxToolIterations = 1),
         ).toList()
 
-        assertEquals(1, events.filterIsInstance<TurnEvent.ToolStarted>().size)
-        assertTrue(events.filterIsInstance<TurnEvent.Finished>().isNotEmpty())
-        assertEquals(3, server.requestCount)
+        assertTrue(events.last() is TurnEvent.Finished)
+        // Chat, web_search, chat, chat — and then it gives up rather than asking a fourth time.
+        assertEquals(4, server.requestCount)
+    }
+
+    // ---- Interrupted streams -----------------------------------------------------------------
+
+    /** A stream that ends without its terminal chunk was cut short, not finished. */
+    @Test
+    fun `surfaces a stream cut short after content as an error`() = runTest {
+        server.enqueue(
+            MockResponse.Builder()
+                .body("""{"model":"qwen3","message":{"role":"assistant","content":"Half an ans"},"done":false}""")
+                .build()
+        )
+
+        engine.respond(conversation(), listOf(userMessage("Hi")), AppSettings()).test {
+            assertTrue(awaitItem() is TurnEvent.RequestPrepared)
+            assertEquals("Half an ans", (awaitItem() as TurnEvent.ContentDelta).text)
+            assertTrue(awaitError() is OllamaException.Truncated)
+        }
+    }
+
+    /** Nothing reached the screen, so re-issuing the round cannot duplicate anything. */
+    @Test
+    fun `retries a round that died before producing anything`() = runTest {
+        server.enqueue(MockResponse.Builder().body("").build())
+        server.enqueue(simpleResponse())
+
+        val events = engine.respond(
+            conversation(),
+            listOf(userMessage("Hi")),
+            AppSettings(),
+        ).toList()
+
+        assertEquals("ok", events.filterIsInstance<TurnEvent.ContentDelta>().single().text)
+        assertEquals(2, server.requestCount)
     }
 
     @Test

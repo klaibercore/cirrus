@@ -42,4 +42,12 @@ sealed class OllamaException(
 
     /** A stream line or response body that did not parse as expected. */
     class Malformed(detail: String, cause: Throwable? = null) : OllamaException(detail, cause)
+
+    /**
+     * The stream ended without the terminal chunk, so the answer is incomplete.
+     *
+     * Distinct from [Network] because it is recoverable in a way a dead socket is not: a round
+     * that has produced nothing yet can simply be re-issued.
+     */
+    class Truncated : OllamaException("The response was cut off before it finished.")
 }

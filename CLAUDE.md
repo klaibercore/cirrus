@@ -28,6 +28,8 @@ Layered, with Hilt wiring it together. Dependencies point inward: `ui → domain
 ```
 app/src/main/java/dev/klaiber/cirrus/
 ├── MainActivity.kt          # entry point; maps ACTION_SEND share intents to a SharedPayload
+├── service/
+│   └── GenerationService.kt # foreground service that keeps a streaming turn alive off-screen
 ├── ui/                     # Compose screens + components
 │   ├── CirrusApp.kt        # NavHost + modal drawer (chat / settings routes)
 │   ├── chat/               # ChatScreen, ChatViewModel, ChatUiState, ConversationExporter
@@ -40,7 +42,9 @@ app/src/main/java/dev/klaiber/cirrus/
 │   └── theme/              # Color, Type, Theme (Material 3, dynamic color support)
 ├── domain/
 │   ├── ChatEngine.kt       # the turn protocol: build request → stream → service tool calls
+│   ├── TurnController.kt   # owns running turns on the application scope; persistence + errors
 │   ├── ConversationTitler.kt # when a thread is named, from what, and what to do on failure
+│   ├── ErrorMessages.kt    # the one place a failure becomes a sentence (Throwable.userMessage)
 │   ├── model/              # Conversation, ChatMessage, GenerationParams, ModelInfo, ...
 │   └── tools/              # CirrusTool interface, ToolRegistry, web tools
 │       └── github/         # 11 GitHub tools + shared schema/argument plumbing
@@ -64,6 +68,12 @@ app/src/main/java/dev/klaiber/cirrus/
   conversations or tool loops. `streamChat` returns a cold `Flow<ChatChunkDto>` of NDJSON
   lines; cancelling the collector cancels the underlying OkHttp call. `showModel` reads
   `/api/show`, which is the only authoritative source of a model's capabilities.
+- **`TurnController`** — owns every turn in flight, keyed by conversation, on the application
+  scope. A turn used to run in `ChatViewModel`'s scope, which dies with its back-stack entry, so
+  switching threads or letting Android reclaim the screen killed the answer halfway. The
+  ViewModel now only *watches* `turns`/`errors` for the thread it is showing; starting, stopping,
+  throttled persistence and finalization all live here. `GenerationService` follows the same
+  `turns` flow and is what stops the OS freezing the process mid-stream.
 - **`ConversationTitler`** — owns auto-titling: whether a thread is due one, the digest that gets
   summarised, and the local fallback when the model cannot answer. It runs on the application
   scope on purpose — titling happens just after an answer lands, which is exactly when people
@@ -90,13 +100,18 @@ app/src/main/java/dev/klaiber/cirrus/
 
 ### Data flow for a chat turn
 
-1. `ChatViewModel.send()` appends the user message, then calls `ChatEngine.respond(...)`.
-2. The engine builds `ChatRequestDto` (system prompt, context window, params, tools) and emits
+1. `ChatViewModel.send()` appends the user message, then calls `TurnController.start(id)`.
+2. The controller appends the assistant placeholder, publishes a `LiveTurn` — which brings
+   `GenerationService` up — and collects `ChatEngine.respond(...)` on the application scope.
+3. The engine builds `ChatRequestDto` (system prompt, context window, params, tools) and emits
    `RequestPrepared` with the exact JSON (surfaced by developer mode).
-3. `OllamaClient.streamChat` streams NDJSON chunks; the engine re-emits content/thinking deltas.
-4. If the model requests tools, the engine executes each via `ToolRegistry`, feeds results back
-   as `role: "tool"` messages, and loops until the model answers or the iteration cap is hit.
-5. `ChatViewModel` throttles DB writes during streaming and finalizes the message on `Finished`.
+4. `OllamaClient.streamChat` streams NDJSON chunks; the engine re-emits content/thinking deltas.
+5. If the model requests tools, the engine executes each via `ToolRegistry`, feeds results back
+   as `role: "tool"` messages, and loops. When the round budget is spent it withholds the tools
+   and asks once more, so the turn ends on an answer rather than an unanswered call.
+6. The controller throttles DB writes during streaming and finalizes the message on `Finished`;
+   the ViewModel overlays the live buffer onto the persisted row for whichever thread is on
+   screen.
 
 ## Conventions
 
@@ -175,3 +190,12 @@ Unit tests live in `app/src/test/java/...` mirroring the main package. Run with
   out of their own signatures so call sites need no opt-in — don't leak `TooltipState` back out.
 - Do not write raw control characters into Kotlin sources. A literal NUL in a char literal makes
   the file binary to `grep` and breaks the parser; use `it.code == 0` instead.
+- **Never run a turn on `viewModelScope`.** Each conversation gets its own back-stack entry and
+  therefore its own ViewModel, so that scope dies when you switch threads — and a backgrounded
+  process is frozen by the OS within seconds, which stalls the socket read until the connection
+  dies. Anything that has to survive the screen belongs on the application scope, with
+  `GenerationService` up for as long as it runs.
+- A stream that ends without a chunk carrying `done` is **truncated, not finished**
+  (`OllamaException.Truncated`). Treating it as a normal completion is what makes half an answer
+  look like the model's final word. `ChatEngine` re-issues such a round only while it has emitted
+  nothing; after the first delta, restarting would duplicate text on screen.

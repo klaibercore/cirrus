@@ -62,6 +62,24 @@ class OllamaClientTest {
         assertEquals("stop", chunks[2].doneReason)
     }
 
+    /**
+     * A body that just stops is not a finished answer — the server died, the network moved, or
+     * the process was frozen mid-read. Completing quietly here would render half a reply as the
+     * model's final word.
+     */
+    @Test
+    fun `streamChat fails when the stream ends without a done chunk`() = runTest {
+        server.enqueue(
+            MockResponse.Builder()
+                .body("""{"model":"qwen3","message":{"role":"assistant","content":"half"},"done":false}""")
+                .build()
+        )
+        client.streamChat(request()).test {
+            assertEquals("half", awaitItem().message?.content)
+            assertTrue(awaitError() is OllamaException.Truncated)
+        }
+    }
+
     @Test
     fun `streamChat maps 401 to Unauthorized`() = runTest {
         server.enqueue(

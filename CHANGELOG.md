@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.0.2] - 2026-08-11
+
+### Fixed
+
+- **Replies no longer die when Cirrus leaves the screen.** A turn ran in the chat screen's own
+  scope, so it was cancelled the moment that screen went away — switching threads killed it
+  outright, and backgrounding the app left it to be frozen by Android within seconds of the
+  process being cached, which stalls the socket until the connection dies. Turns now belong to
+  the application, and a foreground service keeps the process awake and unfrozen for as long as
+  one is running. Lock the phone mid-answer and the answer is finished when you come back.
+- **A cut-off reply is no longer presented as a finished one.** A stream that ended without its
+  terminal chunk was treated as a completed answer, which is what made an interrupted reply look
+  like the model deciding to stop — reliably at a sentence end, because that is where tokens
+  land. It is now reported as the interruption it is, with the partial text kept, and a round
+  that dies before producing anything is quietly retried.
+- **Spending the tool budget no longer abandons the task.** When a turn used up its tool rounds,
+  the model's pending calls were dropped and the turn ended right there — often mid-plan, and
+  sometimes with no text at all. Cirrus now asks once more with the tools withheld, so the turn
+  ends on an answer that says what was found and what is still outstanding.
+
+### Added
+
+- **A notification while a reply is streaming**, showing that Cirrus is working and offering a
+  Stop that works from anywhere. Permission is asked for at your first generation; refusing it
+  costs the notification, not the reply.
+- **A per-thread error banner that waits for you.** A failure on a thread you are not looking at
+  is shown when you return to it, rather than being lost.
+
 ## [1.0.1] - 2026-08-10
 
 ### Fixed
@@ -73,6 +101,7 @@ do things.
   or bridges its tools into the registry.
 - LaTeX is mapped to Unicode, not typeset. There is no layout, so fractions render as `a/b`.
 
-[Unreleased]: https://github.com/klaibercore/cirrus/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/klaibercore/cirrus/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/klaibercore/cirrus/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/klaibercore/cirrus/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/klaibercore/cirrus/releases/tag/v1.0.0

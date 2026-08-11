@@ -1,7 +1,10 @@
 package dev.klaiber.cirrus.ui.chat
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -53,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.klaiber.cirrus.domain.model.Role
@@ -122,6 +126,19 @@ fun ChatScreen(
         copyNotice?.let {
             snackbarHostState.showSnackbar(it)
             copyNotice = null
+        }
+    }
+
+    // The notification is how a reply that outlives the screen stays visible and stoppable, so
+    // ask for it at the first generation rather than on a launch nobody has invested in yet.
+    // Refusing it costs the notification, not the reply: the service runs either way.
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* Nothing to recover: the generation is already running. */ }
+    LaunchedEffect(state.isGenerating) {
+        if (state.isGenerating && needsNotificationPermission(context)) {
+            notificationPermissionAsked = true
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -481,3 +498,19 @@ private val SUGGESTIONS = listOf(
     "Review this stack trace and tell me the likely root cause",
     "Draft a benchmark plan for comparing two models",
 )
+
+/**
+ * Whether the notification prompt is still worth showing.
+ *
+ * Tracked for the life of the process rather than persisted: Android itself stops showing the
+ * dialog after the user has said no twice, so this only needs to stop us asking again while the
+ * same session keeps generating.
+ */
+private var notificationPermissionAsked = false
+
+private fun needsNotificationPermission(context: Context): Boolean {
+    if (notificationPermissionAsked) return false
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+    return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+        PackageManager.PERMISSION_GRANTED
+}

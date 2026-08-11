@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Status-bar icons are drawn as a mask: only the alpha channel survives, so this is a solid
+    white silhouette of the launcher's cloud with no detail inside it.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7.5,19 C4.46,19 2,16.54 2,13.5 C2,10.7 4.11,8.38 6.83,8.05 C7.93,4.98 10.72,3 14,3 C18.09,3 21.4,6.19 21.4,10.12 C21.4,10.3 21.39,10.48 21.37,10.66 C22.94,11.43 24,13 24,14.83 C24,17.13 22.13,19 19.83,19 Z" />
+</vector>
