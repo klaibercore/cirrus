@@ -33,6 +33,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -318,7 +319,7 @@ private fun ConversationRow(
             }
 
             Box {
-                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.minimumInteractiveComponentSize()) {
                     Icon(
                         imageVector = Icons.Outlined.MoreVert,
                         contentDescription = "Options for ${summary.conversation.title}",

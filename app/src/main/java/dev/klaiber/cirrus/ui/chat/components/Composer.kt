@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -163,7 +166,13 @@ fun Composer(
                         }
                         ComposerIcon(
                             icon = Icons.Outlined.TravelExplore,
-                            description = if (toolsEnabled) "Disable web tools" else "Enable web tools",
+                            // This one switch governs every tool offered this turn — web, GitHub
+                            // and any attached MCP server — so it cannot claim to be about search.
+                            description = if (toolsEnabled) {
+                                "Disable tools for this conversation"
+                            } else {
+                                "Enable tools for this conversation"
+                            },
                             onClick = onToggleTools,
                             active = toolsEnabled,
                         )
@@ -269,6 +278,13 @@ private val BAR_WEIGHTS = listOf(0.45f, 0.8f, 1f, 0.8f, 0.45f)
 private const val MIN_BAR_HEIGHT = 4f
 private const val MAX_BAR_GROWTH = 18f
 
+/**
+ * One control in the composer's icon row.
+ *
+ * The glyph stays 20dp so four of them fit next to the send button; the target is restored to the
+ * 48dp minimum, which `Modifier.size(40.dp)` on an `IconButton` would otherwise clip along with
+ * the bounds.
+ */
 @Composable
 private fun ComposerIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -276,7 +292,7 @@ private fun ComposerIcon(
     onClick: () -> Unit,
     active: Boolean = false,
 ) {
-    IconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
+    IconButton(onClick = onClick, modifier = Modifier.minimumInteractiveComponentSize()) {
         Icon(
             imageVector = icon,
             contentDescription = description,
@@ -290,12 +306,19 @@ private fun ComposerIcon(
     }
 }
 
+/**
+ * Send, or stop while a response streams.
+ *
+ * The filled circle stays 38dp because it is a visual anchor and a bigger one crowds the row, but
+ * the button inside it claims the full 48dp target.
+ */
 @Composable
 private fun SendButton(
     isGenerating: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
     val containerColor = when {
         isGenerating -> MaterialTheme.colorScheme.surfaceContainerHighest
         enabled -> MaterialTheme.colorScheme.primary
@@ -308,16 +331,22 @@ private fun SendButton(
     }
 
     Box(
-        modifier = Modifier
-            .size(38.dp)
-            .clip(RoundedCornerShape(50))
-            .background(containerColor),
+        modifier = Modifier.minimumInteractiveComponentSize(),
         contentAlignment = Alignment.Center,
     ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(50))
+                .background(containerColor),
+        )
         IconButton(
-            onClick = onClick,
+            onClick = {
+                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                onClick()
+            },
             enabled = enabled,
-            modifier = Modifier.size(38.dp),
+            modifier = Modifier.minimumInteractiveComponentSize(),
         ) {
             Icon(
                 imageVector = if (isGenerating) Icons.Outlined.Stop else Icons.Filled.ArrowUpward,
