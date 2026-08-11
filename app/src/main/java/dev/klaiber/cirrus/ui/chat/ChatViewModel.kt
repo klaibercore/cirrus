@@ -6,24 +6,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.klaiber.cirrus.data.AttachmentImporter
-import dev.klaiber.cirrus.data.remote.OllamaException
 import dev.klaiber.cirrus.data.repository.ConversationRepository
 import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
-import dev.klaiber.cirrus.domain.ChatEngine
-import dev.klaiber.cirrus.domain.ConversationTitler
-import dev.klaiber.cirrus.domain.TurnEvent
+import dev.klaiber.cirrus.domain.TurnController
+import dev.klaiber.cirrus.domain.userMessage
 import dev.klaiber.cirrus.domain.model.Attachment
 import dev.klaiber.cirrus.domain.model.ChatMessage
 import dev.klaiber.cirrus.domain.model.Conversation
 import dev.klaiber.cirrus.domain.model.GenerationParams
-import dev.klaiber.cirrus.domain.model.GenerationStats
 import dev.klaiber.cirrus.domain.model.Role
-import dev.klaiber.cirrus.domain.model.ToolInvocation
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +29,6 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -45,21 +37,10 @@ class ChatViewModel @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val settingsRepository: SettingsRepository,
     private val modelRepository: ModelRepository,
-    private val chatEngine: ChatEngine,
-    private val conversationTitler: ConversationTitler,
+    private val turnController: TurnController,
     private val attachmentImporter: AttachmentImporter,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
-
-    /** In-flight assistant turn, held in memory so the UI updates per token without DB writes. */
-    private data class LiveTurn(
-        val messageId: String,
-        val content: String = "",
-        val thinking: String = "",
-        val tools: List<ToolInvocation> = emptyList(),
-        val requestJson: String? = null,
-        val stats: GenerationStats? = null,
-    )
 
     private data class EditorState(
         val input: String = "",
@@ -69,17 +50,19 @@ class ChatViewModel @Inject constructor(
         val error: String? = null,
     )
 
+    /** What the screen needs from the turn running elsewhere: the buffer and any failure. */
+    private data class TurnState(
+        val turn: TurnController.LiveTurn? = null,
+        val error: String? = null,
+    )
+
     private val conversationId = MutableStateFlow(
         savedStateHandle.get<String>(ARG_CONVERSATION_ID)?.takeIf { it.isNotBlank() },
     )
-    private val live = MutableStateFlow<LiveTurn?>(null)
     private val editor = MutableStateFlow(EditorState())
 
     private val eventChannel = Channel<ChatEvent>(Channel.BUFFERED)
     val events: Flow<ChatEvent> = eventChannel.receiveAsFlow()
-
-    private var generationJob: Job? = null
-    private var lastPersistAt = 0L
 
     private val conversationFlow = conversationId.flatMapLatest { id ->
         if (id == null) flowOf(null) else conversationRepository.observeConversation(id)
@@ -89,8 +72,26 @@ class ChatViewModel @Inject constructor(
         if (id == null) flowOf(emptyList()) else conversationRepository.observeMessages(id)
     }
 
-    private val coreFlow = combine(conversationFlow, messagesFlow, live) { conversation, messages, turn ->
-        Triple(conversation, mergeLiveTurn(messages, turn), turn != null)
+    /**
+     * The turn belongs to [TurnController], not to this ViewModel: the screen watches whichever
+     * thread it is showing and no longer owns — or cancels — the work.
+     */
+    private val turnFlow = conversationId.flatMapLatest { id ->
+        if (id == null) {
+            flowOf(TurnState())
+        } else {
+            combine(turnController.turns, turnController.errors) { turns, errors ->
+                TurnState(turns[id], errors[id])
+            }
+        }
+    }
+
+    private val coreFlow = combine(
+        conversationFlow,
+        messagesFlow,
+        turnFlow,
+    ) { conversation, messages, turnState ->
+        Triple(conversation, mergeLiveTurn(messages, turnState.turn), turnState)
     }
 
     val uiState: StateFlow<ChatUiState> = combine(
@@ -99,17 +100,17 @@ class ChatViewModel @Inject constructor(
         modelRepository.models,
         editor,
     ) { core, settings, models, editorState ->
-        val (conversation, messages, isGenerating) = core
+        val (conversation, messages, turnState) = core
         ChatUiState(
             conversation = conversation,
             messages = messages,
-            isGenerating = isGenerating,
+            isGenerating = turnState.turn != null,
             input = editorState.input,
             voicePartial = editorState.voicePartial,
             pendingAttachments = editorState.attachments,
             settings = settings,
             availableModels = models,
-            errorBanner = editorState.error,
+            errorBanner = editorState.error ?: turnState.error,
             needsApiKey = !settings.hasApiKey && settings.baseUrl.contains("ollama.com"),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
@@ -127,13 +128,16 @@ class ChatViewModel @Inject constructor(
     fun refreshModels() {
         viewModelScope.launch {
             modelRepository.refresh().onFailure { error ->
-                editor.update { it.copy(error = describe(error)) }
+                editor.update { it.copy(error = error.userMessage()) }
             }
         }
     }
 
     /** Overlays the live buffer onto the persisted row so the UI sees one coherent list. */
-    private fun mergeLiveTurn(messages: List<ChatMessage>, turn: LiveTurn?): List<ChatMessage> {
+    private fun mergeLiveTurn(
+        messages: List<ChatMessage>,
+        turn: TurnController.LiveTurn?,
+    ): List<ChatMessage> {
         if (turn == null) return messages
         return messages.map { message ->
             if (message.id != turn.messageId) {
@@ -153,7 +157,10 @@ class ChatViewModel @Inject constructor(
     /** Typing commits whatever dictation was on screen, since the field shows both as one string. */
     fun onInputChange(value: String) = editor.update { it.copy(input = value, voicePartial = "") }
 
-    fun dismissError() = editor.update { it.copy(error = null) }
+    fun dismissError() {
+        editor.update { it.copy(error = null) }
+        conversationId.value?.let(turnController::clearError)
+    }
 
     fun showError(message: String) = editor.update { it.copy(error = message) }
 
@@ -206,21 +213,22 @@ class ChatViewModel @Inject constructor(
                 content = text,
                 attachments = attachments,
             )
-            startGeneration(conversation.id)
+            turnController.start(conversation.id)
         }
     }
 
     fun stop() {
-        generationJob?.cancel()
+        conversationId.value?.let(turnController::stop)
     }
 
     /** Drops the selected assistant message and everything after it, then re-asks. */
     fun regenerate(messageId: String) {
         val conversationId = uiState.value.conversation?.id ?: return
         viewModelScope.launch {
-            generationJob?.cancelAndJoinQuietly()
+            // Wait for the turn to let go before rewriting the history it is reading.
+            turnController.stopAndJoin(conversationId)
             conversationRepository.truncateFrom(messageId)
-            startGeneration(conversationId)
+            turnController.start(conversationId)
         }
     }
 
@@ -228,13 +236,13 @@ class ChatViewModel @Inject constructor(
     fun editAndResend(messageId: String, newText: String) {
         val conversationId = uiState.value.conversation?.id ?: return
         viewModelScope.launch {
-            generationJob?.cancelAndJoinQuietly()
+            turnController.stopAndJoin(conversationId)
             val messages = conversationRepository.getMessages(conversationId)
             val target = messages.firstOrNull { it.id == messageId } ?: return@launch
             messages.filter { it.sequence > target.sequence }
                 .forEach { conversationRepository.deleteMessage(it.id) }
             conversationRepository.editMessageText(messageId, newText)
-            startGeneration(conversationId)
+            turnController.start(conversationId)
         }
     }
 
@@ -335,10 +343,13 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Switches which thread the screen is showing. It no longer stops the turn: a generation
+     * belongs to its conversation, and leaving to read another one is not a decision to abandon
+     * it. Whatever streams while you are away is on the thread when you come back.
+     */
     fun openConversation(id: String?) {
         if (conversationId.value == id) return
-        generationJob?.cancel()
-        live.value = null
         editor.value = EditorState()
         conversationId.value = id
     }
@@ -367,124 +378,7 @@ class ChatViewModel @Inject constructor(
         return modelRepository.models.value.firstOrNull()?.name.orEmpty()
     }
 
-    private suspend fun startGeneration(conversationId: String) {
-        val conversation = conversationRepository.getConversation(conversationId) ?: return
-        val history = conversationRepository.getMessages(conversationId)
-        val settings = settingsRepository.current.value
-
-        val placeholder = conversationRepository.appendMessage(
-            conversationId = conversationId,
-            role = Role.ASSISTANT,
-            content = "",
-            model = conversation.model,
-        )
-        live.value = LiveTurn(messageId = placeholder.id)
-        lastPersistAt = 0L
-
-        generationJob = viewModelScope.launch {
-            try {
-                chatEngine.respond(conversation, history, settings).collect { event ->
-                    when (event) {
-                        is TurnEvent.RequestPrepared -> live.update { turn ->
-                            turn?.copy(
-                                requestJson = if (settings.developerMode) event.requestJson else null,
-                            )
-                        }
-
-                        is TurnEvent.ThinkingDelta -> {
-                            live.update { it?.copy(thinking = it.thinking + event.text) }
-                            persistThrottled()
-                        }
-
-                        is TurnEvent.ContentDelta -> {
-                            live.update { it?.copy(content = it.content + event.text) }
-                            persistThrottled()
-                        }
-
-                        is TurnEvent.ToolStarted -> live.update { turn ->
-                            turn?.copy(tools = turn.tools + event.invocation)
-                        }
-
-                        is TurnEvent.ToolFinished -> live.update { turn ->
-                            turn?.copy(
-                                tools = turn.tools.map { existing ->
-                                    if (existing.id == event.invocation.id) event.invocation else existing
-                                },
-                            )
-                        }
-
-                        is TurnEvent.Finished -> live.update { it?.copy(stats = event.stats) }
-                    }
-                }
-                finalize(errorMessage = null)
-                conversationTitler.onTurnFinished(conversationId)
-            } catch (cancellation: CancellationException) {
-                // Preserve whatever streamed before the user hit stop.
-                withContext(NonCancellable) { finalize(errorMessage = null) }
-                // Titling runs on the application scope, so a stopped turn still gets named.
-                conversationTitler.onTurnFinished(conversationId)
-                throw cancellation
-            } catch (error: Throwable) {
-                finalize(errorMessage = describe(error))
-            }
-        }
-    }
-
-    /**
-     * Writes the buffer to the database at most every [PERSIST_INTERVAL_MS].
-     *
-     * Per-token writes would hammer SQLite for no benefit; this bounds how much of a long
-     * generation is lost if the process dies mid-stream.
-     */
-    private suspend fun persistThrottled() {
-        val now = System.currentTimeMillis()
-        if (now - lastPersistAt < PERSIST_INTERVAL_MS) return
-        lastPersistAt = now
-        val turn = live.value ?: return
-        conversationRepository.updateMessageContent(
-            messageId = turn.messageId,
-            content = turn.content,
-            thinking = turn.thinking.takeIf { it.isNotEmpty() },
-            stats = null,
-            toolInvocations = turn.tools,
-            errorMessage = null,
-        )
-    }
-
-    private suspend fun finalize(errorMessage: String?) {
-        val turn = live.value ?: return
-        conversationRepository.updateMessageContent(
-            messageId = turn.messageId,
-            content = turn.content,
-            thinking = turn.thinking.takeIf { it.isNotEmpty() },
-            stats = turn.stats,
-            toolInvocations = turn.tools,
-            errorMessage = errorMessage,
-        )
-        live.value = null
-        if (errorMessage != null) {
-            editor.update { it.copy(error = errorMessage) }
-        }
-    }
-
-    private fun describe(error: Throwable): String = when (error) {
-        is OllamaException.MissingApiKey -> "Add your Ollama API key in Settings to start chatting."
-        is OllamaException.Unauthorized -> "The API key was rejected. Check it in Settings."
-        is OllamaException.RateLimited -> error.retryAfterSeconds
-            ?.let { "Rate limited. Try again in ${it}s." }
-            ?: "Rate limited. Try again shortly."
-        is OllamaException.ModelNotFound -> "\"${error.model}\" is not available on this host."
-        is OllamaException.Network -> "Network error: ${error.message}"
-        else -> error.message ?: "Something went wrong."
-    }
-
-    private suspend fun Job.cancelAndJoinQuietly() {
-        cancel()
-        runCatching { join() }
-    }
-
     private companion object {
         const val ARG_CONVERSATION_ID = "conversationId"
-        const val PERSIST_INTERVAL_MS = 600L
     }
 }

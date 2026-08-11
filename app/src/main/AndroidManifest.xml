@@ -4,6 +4,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- A streaming reply has to keep reading its socket after Cirrus leaves the screen;
+         a cached process is frozen within seconds and would lose the rest of the answer. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Keeps the CPU running between packets while the screen is off. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Dictation in the composer. Requested at the moment the microphone is first tapped. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
@@ -49,6 +56,12 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
+
+        <!-- Runs only while a turn is in flight and stops itself as soon as one is not. -->
+        <service
+            android:name=".service.GenerationService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>
