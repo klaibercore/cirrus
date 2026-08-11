@@ -70,8 +70,9 @@ already know what a context window is, and gets out of your way.
 |---|---|
 | 🧠 **Capability-aware model picker** | Cards showing parameter count, quantization, on-disk size and context window, with labelled capability chips. Filter by vision, reasoning, tools, cloud or local. |
 | ⚡ **True token streaming** | NDJSON straight from `/api/chat`. Hit stop and the OkHttp call is cancelled, so the server stops generating too — no phantom token burn. |
+| 📵 **Answers finish without you** | Lock the phone or switch app mid-answer and the reply keeps streaming, in a foreground service you can stop from the notification. Switch threads and the one you left carries on. |
 | 🤔 **Reasoning traces** | `thinking` deltas stream into a collapsible section, with effort control for models that support it. |
-| 🔧 **Tool calling** | Bounded multi-round tool loops. Web search, page fetch and the GitHub tools. |
+| 🔧 **Tool calling** | Bounded multi-round tool loops. Web search, page fetch and the GitHub tools. Spend the round budget and the model is asked once more without tools, so a turn ends on an answer rather than on a call nobody ran. |
 | 🐙 **GitHub integration** | Read code in public *and* private repos, search, browse trees, read issues and PR diffs. Opening issues, commenting, posting reviews and committing files are behind a separate, default-off switch. |
 | 🔌 **MCP client** | Model Context Protocol client over both HTTP transports (streamable and SSE), with the transport auto-detected. Not yet reachable from the UI — see below. |
 | 🎙️ **Voice dictation** | Speak into the composer with a live level meter. Prefers Android's on-device recogniser, so audio need never leave the phone. |
@@ -173,6 +174,7 @@ graph TD
     end
 
     subgraph domain["domain — pure Kotlin, no Android"]
+        Controller[TurnController<br/>owns turns in flight]
         Engine[ChatEngine<br/>the turn protocol]
         Registry[ToolRegistry]
         Tools[WebSearch · WebFetch<br/>GitHub × 12]
@@ -186,7 +188,10 @@ graph TD
         Store[(DataStore<br/>Keystore-encrypted)]
     end
 
-    Chat --> Engine
+    Chat --> Controller
+    Controller --> Engine
+    Controller --> Room
+    Service[GenerationService<br/>keeps the process awake] --> Controller
     Settings --> Store
     Picker --> Ollama
     Engine --> Registry
@@ -206,25 +211,30 @@ graph TD
 ```mermaid
 sequenceDiagram
     participant VM as ChatViewModel
+    participant C as TurnController
     participant E as ChatEngine
     participant O as OllamaClient
     participant T as ToolRegistry
 
-    VM->>E: respond(conversation, history, settings)
+    VM->>C: start(conversationId)
+    Note over C: application scope, foreground service up
+    C->>E: respond(conversation, history, settings)
     E->>E: build request (system prompt, window, params, tools)
-    E-->>VM: RequestPrepared(json)
+    E-->>C: RequestPrepared(json)
     E->>O: streamChat()
     loop per NDJSON line
         O-->>E: chunk
-        E-->>VM: ThinkingDelta / ContentDelta
+        E-->>C: ThinkingDelta / ContentDelta
+        C-->>VM: live buffer, if this thread is on screen
     end
     alt model requested tools
         E->>T: execute each call
         T-->>E: results
         E->>O: streamChat() with tool messages
-        Note over E,O: bounded by maxToolIterations
+        Note over E,O: budget spent → ask again with no tools
     end
-    E-->>VM: Finished(stats)
+    E-->>C: Finished(stats)
+    C->>C: persist the finished message
 ```
 
 `ChatEngine` is deliberately free of persistence and UI concerns, so the whole turn protocol is
@@ -291,8 +301,13 @@ Plus any MCP server you explicitly attach, once that is reachable from the UI.
 
 Your API key and GitHub token are stored in DataStore, encrypted with AES-GCM using a key
 generated in and never released from the Android Keystore. Conversations, messages and attachments
-live in an app-private Room database and are never uploaded. `INTERNET` is the only permission
-declared up front; `RECORD_AUDIO` is requested the first time you tap the microphone.
+live in an app-private Room database and are never uploaded.
+
+The permissions are `INTERNET`, plus `FOREGROUND_SERVICE`/`FOREGROUND_SERVICE_DATA_SYNC` and
+`WAKE_LOCK` — which is how a reply keeps streaming after you leave the screen, and which are used
+only while one is. `POST_NOTIFICATIONS` is asked for at your first generation, and only buys the
+notification that shows it running; `RECORD_AUDIO` is requested the first time you tap the
+microphone.
 
 There is no analytics SDK, no crash reporter, and no telemetry of any kind. See
 [SECURITY.md](SECURITY.md) for the full threat model.
