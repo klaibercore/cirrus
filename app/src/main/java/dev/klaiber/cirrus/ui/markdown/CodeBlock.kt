@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.WrapText
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -84,7 +85,7 @@ fun CodeBlock(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = { wrapped = !wrapped },
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.minimumInteractiveComponentSize(),
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.WrapText,
@@ -98,7 +99,7 @@ fun CodeBlock(
                         clipboard.copy(code, label = language ?: "code")
                         justCopied = !clipboard.showsSystemConfirmation
                     },
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.minimumInteractiveComponentSize(),
                 ) {
                     Icon(
                         imageVector = if (justCopied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,

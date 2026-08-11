@@ -85,4 +85,43 @@ object NetworkModule {
             .callTimeout(60, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
+
+    /**
+     * A client for MCP servers that attaches no credential of its own.
+     *
+     * Every other client here injects a credential holder and sets `Authorization` from it. This
+     * one must not: an MCP server is a host the user picked, each carries its own token, and the
+     * transport sets the header per request. An interceptor here would overwrite that.
+     *
+     * The read timeout is generous because the SSE transport parks on a long-lived event stream
+     * waiting for a reply to come back on it, but it is not disabled — unlike a generation, an
+     * MCP call that never answers is a hung tool call in the middle of a turn.
+     */
+    @Provides
+    @Singleton
+    @McpHttp
+    fun provideMcpOkHttpClient(): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header("User-Agent", "Cirrus/${BuildConfig.VERSION_NAME} (Android)")
+                    .build()
+                chain.proceed(request)
+            }
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    addInterceptor(
+                        HttpLoggingInterceptor().apply {
+                            level = HttpLoggingInterceptor.Level.BASIC
+                            redactHeader("Authorization")
+                        },
+                    )
+                }
+            }
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
 }

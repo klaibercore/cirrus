@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Visibility
@@ -62,6 +63,7 @@ import dev.klaiber.cirrus.ui.components.HelpTooltip
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenMcpServers: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -276,6 +278,14 @@ fun SettingsScreen(
                 steps = 18,
                 format = { it.toInt().toString() },
                 onChange = { viewModel.setMaxToolIterations(it.toInt()) },
+            )
+            NavigationRow(
+                title = "MCP servers",
+                subtitle = mcpSubtitle(state.mcpServerCount, state.mcpToolCount),
+                help = "Attach a Model Context Protocol server and its tools become available " +
+                    "to the model alongside Cirrus's own. Each server is reached and asked what " +
+                    "it offers before it is saved, and its token is only ever sent to it.",
+                onClick = onOpenMcpServers,
             )
 
             SectionHeader("Data")
@@ -718,6 +728,51 @@ private fun SwitchRow(
             HelpBadge(title = title, text = help)
             Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
         }
+    }
+}
+
+/** A row that leads somewhere else, rather than changing something in place. */
+@Composable
+private fun NavigationRow(
+    title: String,
+    subtitle: String,
+    help: String,
+    onClick: () -> Unit,
+) {
+    HelpTooltip(title = title, text = help) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            HelpBadge(title = title, text = help)
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Says what attaching servers has actually bought you, which is a tool count, not a server count. */
+private fun mcpSubtitle(serverCount: Int, toolCount: Int): String = when {
+    serverCount == 0 -> "None attached"
+    toolCount == 0 -> "$serverCount attached · no tools available"
+    else -> {
+        val servers = if (serverCount == 1) "1 server" else "$serverCount servers"
+        val tools = if (toolCount == 1) "1 tool" else "$toolCount tools"
+        "$servers · $tools offered to the model"
     }
 }
 

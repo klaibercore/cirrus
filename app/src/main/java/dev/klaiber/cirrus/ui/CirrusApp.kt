@@ -17,6 +17,7 @@ import androidx.navigation.navArgument
 import dev.klaiber.cirrus.ui.chat.ChatScreen
 import dev.klaiber.cirrus.ui.conversations.ConversationDrawer
 import dev.klaiber.cirrus.ui.settings.SettingsScreen
+import dev.klaiber.cirrus.ui.settings.mcp.McpServersScreen
 import kotlinx.coroutines.launch
 
 /** Content handed over from another app through a share intent. */
@@ -32,6 +33,7 @@ private object Routes {
     const val CHAT = "chat"
     const val CHAT_PATTERN = "chat?$CHAT_ARG={$CHAT_ARG}"
     const val SETTINGS = "settings"
+    const val MCP_SERVERS = "settings/mcp"
 }
 
 @Composable
@@ -90,7 +92,14 @@ fun CirrusApp(sharedPayload: SharedPayload = SharedPayload()) {
             }
 
             composable(Routes.SETTINGS) {
-                SettingsScreen(onBack = { navController.popBackStack() })
+                SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenMcpServers = { navController.navigate(Routes.MCP_SERVERS) },
+                )
+            }
+
+            composable(Routes.MCP_SERVERS) {
+                McpServersScreen(onBack = { navController.popBackStack() })
             }
         }
     }

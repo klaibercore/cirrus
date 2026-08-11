@@ -7,6 +7,11 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -28,6 +34,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Menu
@@ -38,6 +45,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -48,8 +56,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +78,7 @@ import dev.klaiber.cirrus.ui.chat.components.ModelPickerSheet
 import dev.klaiber.cirrus.ui.chat.components.ParametersSheet
 import dev.klaiber.cirrus.ui.util.rememberClipboard
 import dev.klaiber.cirrus.ui.voice.rememberVoiceInput
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +97,7 @@ fun ChatScreen(
     val clipboard = rememberClipboard()
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     var showModelPicker by remember { mutableStateOf(false) }
     var showParameters by remember { mutableStateOf(false) }
@@ -159,11 +171,18 @@ fun ChatScreen(
         }
     }
 
-    // Follow the tail of the transcript as tokens arrive.
+    // Follow the tail of the transcript as tokens arrive — but only while the reader is still
+    // there. Scrolling up mid-answer is how you re-read what was just said, and a transcript that
+    // drags you back to the bottom on every token makes that impossible.
+    val isPinnedToBottom by remember {
+        derivedStateOf { !listState.canScrollForward }
+    }
     val lastMessage = state.messages.lastOrNull()
     LaunchedEffect(state.messages.size, lastMessage?.content?.length, lastMessage?.thinking?.length) {
-        if (state.messages.isNotEmpty()) {
-            listState.animateScrollToItem(state.messages.lastIndex)
+        if (isPinnedToBottom && state.messages.isNotEmpty()) {
+            // Not animate*: this restarts on every token, and a cancelled animation per token is
+            // both wasted work and visibly jittery.
+            listState.scrollToItem(state.messages.lastIndex)
         }
     }
 
@@ -328,6 +347,25 @@ fun ChatScreen(
                         )
                     }
                 }
+
+                // The way back, now that scrolling up no longer gets overridden.
+                AnimatedVisibility(
+                    visible = !isPinnedToBottom,
+                    enter = fadeIn() + scaleIn(initialScale = 0.85f),
+                    exit = fadeOut() + scaleOut(targetScale = 0.85f),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 12.dp),
+                ) {
+                    JumpToLatestButton(
+                        isGenerating = state.isGenerating,
+                        onClick = {
+                            scope.launch {
+                                listState.animateScrollToItem(state.messages.lastIndex)
+                            }
+                        },
+                    )
+                }
             }
         }
     }
@@ -384,6 +422,41 @@ fun ChatScreen(
     }
 }
 
+/**
+ * Returns the reader to the tail of the transcript.
+ *
+ * Says "New response" rather than "Scroll down" while a turn is streaming, because at that moment
+ * the reason to go back is that something is arriving, not that the list is long.
+ */
+@Composable
+private fun JumpToLatestButton(isGenerating: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = RoundedCornerShape(50),
+        shadowElevation = 3.dp,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier
+                .heightIn(min = 40.dp)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.ArrowDownward,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (isGenerating) "New response" else "Jump to latest",
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+    }
+}
+
 @Composable
 private fun ErrorBanner(message: String, onDismiss: () -> Unit) {
     Surface(
@@ -400,7 +473,7 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit) {
                 color = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onDismiss, modifier = Modifier.minimumInteractiveComponentSize()) {
                 Icon(
                     imageVector = Icons.Outlined.Close,
                     contentDescription = "Dismiss",

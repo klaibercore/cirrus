@@ -1,6 +1,6 @@
 package dev.klaiber.cirrus.data.mcp
 
-import dev.klaiber.cirrus.di.GitHubHttp
+import dev.klaiber.cirrus.di.McpHttp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -42,7 +42,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class SseMcpTransport @Inject constructor(
-    @GitHubHttp private val httpClient: OkHttpClient,
+    @McpHttp private val httpClient: OkHttpClient,
     private val json: Json,
 ) : McpTransport {
 

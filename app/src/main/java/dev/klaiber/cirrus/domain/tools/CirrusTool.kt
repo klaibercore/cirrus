@@ -160,20 +160,23 @@ class WebFetchTool @Inject constructor(
  * Maps tool names to implementations, and decides which are offered to the model.
  *
  * [definitions] is computed per turn rather than fixed at construction: which tools exist
- * depends on what the user has switched on and whether a GitHub token is present. Sending the
- * schema for a tool that cannot run wastes context and invites the model to call it and fail.
+ * depends on what the user has switched on, whether a GitHub token is present, and which MCP
+ * servers are currently attached and reachable. Sending the schema for a tool that cannot run
+ * wastes context and invites the model to call it and fail.
  */
 @Singleton
 class ToolRegistry @Inject constructor(
     webSearchTool: WebSearchTool,
     webFetchTool: WebFetchTool,
     private val gitHubTools: GitHubToolSet,
+    private val mcpTools: McpToolSet,
     private val settingsRepository: SettingsRepository,
     private val gitHubCredentials: GitHubCredentials,
 ) {
     private val webTools: List<CirrusTool> = listOf(webSearchTool, webFetchTool)
 
-    private val tools: Map<String, CirrusTool> =
+    /** Tools that exist for the life of the process; MCP tools come and go, so are resolved live. */
+    private val staticTools: Map<String, CirrusTool> =
         (webTools + gitHubTools.all).associateBy { it.name }
 
     val definitions: List<JsonElement>
@@ -185,9 +188,19 @@ class ToolRegistry @Inject constructor(
                     .filter { writesAllowed || it !in gitHubTools.writeTools }
                     .forEach { add(it.definition) }
             }
+            // Only servers whose tools have actually been listed contribute here, so one that is
+            // switched off or unreachable is silently absent rather than offered and broken.
+            addAll(mcpTools.all.map { it.definition })
         }
 
-    fun find(name: String): CirrusTool? = tools[name]
+    /**
+     * Built-ins win ties.
+     *
+     * [McpTool.qualifiedName] namespaces every MCP tool, so a collision means a server picked a
+     * name that looks namespaced. Resolving to the built-in is the safe way to break it: a remote
+     * server must not be able to take over `web_search` by naming a tool after it.
+     */
+    fun find(name: String): CirrusTool? = staticTools[name] ?: mcpTools.find(name)
 
     private val gitHubEnabled: Boolean
         get() = settingsRepository.current.value.gitHubToolsEnabled &&

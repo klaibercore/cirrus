@@ -1,6 +1,6 @@
 package dev.klaiber.cirrus.data.mcp
 
-import dev.klaiber.cirrus.di.GitHubHttp
+import dev.klaiber.cirrus.di.McpHttp
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -19,8 +19,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class StreamableHttpMcpTransport @Inject constructor(
-    // Shares the GitHub client because both need bearer auth and neither may carry the Ollama key.
-    @GitHubHttp private val httpClient: OkHttpClient,
+    // A client with no auth interceptor: the Authorization header below is the server's own token.
+    @McpHttp private val httpClient: OkHttpClient,
 ) : McpTransport {
 
     override fun send(

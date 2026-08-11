@@ -1,13 +1,16 @@
 package dev.klaiber.cirrus.ui.chat.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,6 +40,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,6 +52,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -80,7 +90,7 @@ fun MessageItem(
     modifier: Modifier = Modifier,
 ) {
     when (message.role) {
-        Role.USER -> UserMessage(message, modifier)
+        Role.USER -> UserMessage(message, onMore, modifier)
         Role.ASSISTANT -> AssistantMessage(
             message = message,
             showStats = showStats,
@@ -97,8 +107,23 @@ fun MessageItem(
     }
 }
 
+/**
+ * Your own turn.
+ *
+ * Long-press opens the same actions sheet the assistant turns use — copy, edit and resend, branch,
+ * delete. A bubble with no visible affordance is the platform convention for this; putting an icon
+ * row under every message you sent would double the chrome in the transcript.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun UserMessage(message: ChatMessage, modifier: Modifier = Modifier) {
+private fun UserMessage(
+    message: ChatMessage,
+    onMore: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val bubbleShape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp)
+
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.End,
@@ -109,8 +134,21 @@ private fun UserMessage(message: ChatMessage, modifier: Modifier = Modifier) {
         if (message.content.isNotBlank()) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
-                modifier = Modifier.widthIn(max = 320.dp),
+                shape = bubbleShape,
+                // A fraction rather than a fixed cap: 320dp is most of a compact phone's width
+                // anyway, and a postage stamp on a tablet.
+                modifier = Modifier
+                    .fillMaxWidth(USER_BUBBLE_WIDTH_FRACTION)
+                    .wrapContentWidth(Alignment.End)
+                    .clip(bubbleShape)
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onMore()
+                        },
+                        onLongClickLabel = "Message actions",
+                    ),
             ) {
                 Text(
                     text = message.content,
@@ -135,7 +173,35 @@ private fun AssistantMessage(
     onMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
+    val haptics = LocalHapticFeedback.current
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                // No ripple: an answer can be a screenful, and flashing all of it on every tap
+                // is noise. The haptic is the feedback that the long-press registered.
+                indication = null,
+                onClick = {},
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onMore()
+                },
+                onLongClickLabel = "Message actions",
+            )
+            // Announce the finished answer, not every token: TalkBack reading a response as it
+            // streams is unusable, and silence when one arrives is worse. There is no "off" mode,
+            // so the region is only declared once the turn has landed — which is also the moment
+            // the modifier changes and the announcement fires.
+            .then(
+                if (message.isStreaming) {
+                    Modifier
+                } else {
+                    Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                },
+            ),
+    ) {
         message.thinking?.takeIf { it.isNotBlank() }?.let { thinking ->
             ThinkingSection(
                 thinking = thinking,
@@ -355,13 +421,20 @@ private fun MessageActions(
     }
 }
 
+/**
+ * The icon stays small; the target does not.
+ *
+ * `Modifier.size(36.dp)` on an `IconButton` shrinks its hit rectangle along with its bounds, which
+ * is how a row of 17dp glyphs ends up below the 48dp minimum. [minimumInteractiveComponentSize]
+ * restores the target without making the row look heavier.
+ */
 @Composable
 private fun ActionIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     onClick: () -> Unit,
 ) {
-    IconButton(onClick = onClick, modifier = Modifier.size(36.dp)) {
+    IconButton(onClick = onClick, modifier = Modifier.minimumInteractiveComponentSize()) {
         Icon(
             imageVector = icon,
             contentDescription = description,
@@ -437,7 +510,7 @@ private fun ErrorCard(error: String, onRetry: () -> Unit, modifier: Modifier = M
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))
-            IconButton(onClick = onRetry, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = onRetry, modifier = Modifier.minimumInteractiveComponentSize()) {
                 Icon(
                     imageVector = Icons.Outlined.Refresh,
                     contentDescription = "Retry",
@@ -548,7 +621,7 @@ private fun AttachmentChip(attachment: Attachment, onRemove: ((String) -> Unit)?
             if (onRemove != null) {
                 IconButton(
                     onClick = { onRemove(attachment.id) },
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.minimumInteractiveComponentSize(),
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Close,
@@ -572,3 +645,6 @@ private fun summarizeArguments(argumentsJson: String): String =
         .take(120)
 
 private const val MAX_TOOL_RESULT_PREVIEW = 4_000
+
+/** How much of the row a user bubble may take before it wraps. */
+private const val USER_BUBBLE_WIDTH_FRACTION = 0.85f

@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.1.0] - 2026-08-11
+
+### Added
+
+- **MCP servers.** Attach a Model Context Protocol server and its tools are offered to the model
+  alongside Cirrus's own, under the same per-conversation tools switch. Servers live in
+  **Settings → Tools → MCP servers**; each one can be switched off without being removed, and its
+  token is stored with the same Keystore-backed encryption as the Ollama and GitHub keys.
+- **Discovery before you commit.** Adding a server connects to it, asks what tools it offers, and
+  lists them — with the transport it negotiated — before anything is saved. A URL that parses
+  proves nothing, and a misconfigured server otherwise fails much later, mid-answer, as a tool
+  call the model cannot explain. Editing the URL or token after testing marks the result stale
+  rather than showing a number that no longer applies.
+- **A short list of known servers** (GitHub, Sentry, Linear, Hugging Face, DeepWiki) that prefill
+  the form. They are starting points, not endorsements, and each still has to be reached before
+  it can be saved.
+- **Jump to latest.** Scrolling up during an answer now offers a way back, labelled "New response"
+  while a turn is still streaming.
+
+### Fixed
+
+- **Scrolling up mid-answer no longer fights you.** The transcript followed the tail on every
+  token, so trying to re-read something while a response streamed dragged you straight back to
+  the bottom. It now follows only when you are already at the bottom — and does so without
+  restarting an animation per token, which was also the source of some of the jitter.
+- **Your own messages can be acted on.** Copy, edit and resend, branch and delete were all
+  implemented and reachable for assistant turns only; the actions sheet had an edit-and-resend
+  branch that nothing could open. Long-press any message you sent.
+- **Touch targets meet the 48dp minimum.** Nine controls — the composer's icon row, the send
+  button, the per-message actions, the code-block buttons, the conversation overflow menu and the
+  error banner's dismiss — had hit areas smaller than their icons suggested.
+- **TalkBack announces answers.** A completed response is now a polite live region, so it is read
+  out when it lands instead of arriving in silence.
+
+### Security
+
+- **An MCP server can no longer receive your GitHub token.** The MCP transports shared the GitHub
+  HTTP client, whose interceptor replaces `Authorization` on every request it handles — so a
+  server's own token would have been overwritten with the user's GitHub PAT and sent to a
+  third-party host. MCP now has its own client that attaches no credential of its own. Nothing
+  was exposed in a released build: no code path reached the MCP client until this release.
+
 ## [1.0.2] - 2026-08-11
 
 ### Fixed

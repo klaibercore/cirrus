@@ -36,6 +36,7 @@ app/src/main/java/dev/klaiber/cirrus/
 │   │   └── components/     # MessageItem, Composer, ModelPickerSheet, ParametersSheet, ...
 │   ├── conversations/       # ConversationDrawer + ConversationsViewModel
 │   ├── settings/           # SettingsScreen + SettingsViewModel
+│   │   └── mcp/            # McpServersScreen, McpServerEditorSheet (probe), McpViewModel
 │   ├── components/         # HelpTooltip / HelpBadge, shared across screens
 │   ├── voice/              # VoiceInput — SpeechRecognizer hoisted into Compose state
 │   ├── markdown/           # MarkdownParser, MarkdownInline, SyntaxHighlighter, CodeBlock
@@ -46,14 +47,14 @@ app/src/main/java/dev/klaiber/cirrus/
 │   ├── ConversationTitler.kt # when a thread is named, from what, and what to do on failure
 │   ├── ErrorMessages.kt    # the one place a failure becomes a sentence (Throwable.userMessage)
 │   ├── model/              # Conversation, ChatMessage, GenerationParams, ModelInfo, ...
-│   └── tools/              # CirrusTool interface, ToolRegistry, web tools
+│   └── tools/              # CirrusTool interface, ToolRegistry, web tools, McpTool/McpToolSet
 │       └── github/         # 11 GitHub tools + shared schema/argument plumbing
 ├── data/
 │   ├── remote/             # OllamaClient (OkHttp + NDJSON), DTOs, ApiCredentials, exceptions
 │   │   └── github/         # GitHubClient (REST v3), DTOs, GitHubCredentials
-│   ├── mcp/                # McpClient — JSON-RPC over streamable HTTP
+│   ├── mcp/                # McpClient + transports, McpCatalog (known servers)
 │   ├── local/              # Room database, DAOs, entities, mappers
-│   ├── repository/         # ConversationRepository, SettingsRepository, ModelRepository
+│   ├── repository/         # Conversation/Settings/Model + McpServerRepository
 │   └── prefs/              # SecretCipher (Keystore-backed envelope encryption)
 └── di/                     # AppModule, NetworkModule, DatabaseModule, Qualifiers
 ```
@@ -81,14 +82,24 @@ app/src/main/java/dev/klaiber/cirrus/
   forever. `Conversation.autoTitledAt` is the record: null means the name is the user's.
 - **`ToolRegistry`** — maps tool names to `CirrusTool` implementations. `definitions` is
   **computed per turn**, not fixed at construction: which tools are offered depends on the user's
-  toggles and whether a GitHub token exists. Sending a schema for a tool that cannot run wastes
-  context and invites the model to call it and fail.
+  toggles, whether a GitHub token exists, and which MCP servers are currently attached and
+  reachable. Sending a schema for a tool that cannot run wastes context and invites the model to
+  call it and fail. `find` resolves built-ins before MCP tools, so a remote server cannot take
+  over `web_search` by naming a tool after it.
 - **`GitHubClient`** — REST v3 transport. Has its own `OkHttpClient` (`@GitHubHttp`) because the
   Ollama client attaches the Ollama key to every request, and that key must never reach a third
   party. All mutating calls funnel through `requireWrites()`.
-- **`McpClient`** — `initialize` → `tools/list` → `tools/call` over streamable HTTP. Handles both
-  a plain JSON body and an SSE frame. Server-initiated requests, sampling and resources are not
-  implemented; a client that only consumes tools never needs them.
+- **`McpClient`** — `initialize` → `tools/list` → `tools/call`, over either HTTP transport
+  (`McpTransport`). Handles both a plain JSON body and an SSE frame, and retries on the older
+  transport when a server answers streamable-HTTP with the SSE handshake. Server-initiated
+  requests, sampling and resources are not implemented; a client that only consumes tools never
+  needs them.
+- **`McpServerRepository`** — the attached servers (DataStore, tokens encrypted with
+  `SecretCipher`) *and* the tools resolved from them. The two live together because a tool list is
+  only meaningful for the config version it was fetched against. `probe(url, token)` is discovery:
+  it reaches a server without saving it, which is what the add/edit sheet requires before it will
+  let you save. `bindings` is a snapshot `ToolRegistry` can read synchronously mid-turn — that is
+  the wrong moment to find out a server is down.
 - **`SettingsRepository`** — single source of truth for config (DataStore). Mirrors the connection
   fields into `ApiCredentials` and `GitHubCredentials` (volatile fields) so the OkHttp
   interceptors can read them without suspending.
@@ -184,8 +195,19 @@ Unit tests live in `app/src/test/java/...` mirroring the main package. Run with
   omitting `think` does not mean "no thinking". It also rejects `think: true` outright on a model
   without the capability. Anything that needs a short answer has to send `think: false`
   explicitly — and budget for a model that ignores it.
+- MCP servers get their own `OkHttpClient` (`@McpHttp`) that attaches **no** credential. The
+  other clients set `Authorization` from a credential holder in an interceptor, and an
+  interceptor's `header()` *replaces* whatever the request already had — pointing the MCP
+  transports at `@GitHubHttp` (as they originally were) meant every attached server received the
+  user's GitHub PAT instead of its own token. Anything per-request-credentialled belongs on a
+  client with no auth interceptor.
 - GitHub's `/issues` endpoint returns pull requests too. `ListIssuesTool` filters on
   `pull_request == null`; forgetting that double-counts every PR as an issue.
+- `Modifier.size(n.dp)` on an `IconButton` shrinks its **hit rectangle**, not just its bounds, so
+  anything under 48dp quietly breaks the touch-target minimum. Use
+  `Modifier.minimumInteractiveComponentSize()` and size the `Icon` inside it instead.
+- `LiveRegionMode` has no "off". To stop TalkBack announcing a message, omit the `semantics` block
+  rather than trying to set a mode — see the `.then(...)` in `AssistantMessage`.
 - Material 3 tooltip types are `@ExperimentalMaterial3Api`. `HelpTooltip`/`HelpBadge` keep them
   out of their own signatures so call sites need no opt-in — don't leak `TooltipState` back out.
 - Do not write raw control characters into Kotlin sources. A literal NUL in a char literal makes
