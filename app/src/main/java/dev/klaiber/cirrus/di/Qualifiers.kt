@@ -16,3 +16,16 @@ annotation class ApplicationScope
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class GitHubHttp
+
+/**
+ * The HTTP client for MCP servers.
+ *
+ * Attaches no credential of its own. An MCP server is an arbitrary third-party host chosen by the
+ * user, and each one carries its own token, so the transport sets `Authorization` per request.
+ * Reusing the GitHub client would be actively wrong: its interceptor *replaces* that header with
+ * the user's GitHub PAT, which would both break per-server auth and hand the PAT to every MCP
+ * server attached.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class McpHttp

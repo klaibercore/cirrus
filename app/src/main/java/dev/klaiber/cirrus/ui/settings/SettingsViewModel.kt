@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.klaiber.cirrus.BuildConfig
 import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.repository.ConversationRepository
+import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.model.AppSettings
@@ -33,6 +34,9 @@ data class SettingsUiState(
     val models: List<ModelInfo> = emptyList(),
     val connectionStatus: ConnectionStatus = ConnectionStatus.Idle,
     val versionName: String = BuildConfig.VERSION_NAME,
+    val mcpServerCount: Int = 0,
+    /** Tools actually resolved from enabled servers, not the number configured. */
+    val mcpToolCount: Int = 0,
 )
 
 @HiltViewModel
@@ -40,6 +44,7 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val conversationRepository: ConversationRepository,
     private val modelRepository: ModelRepository,
+    mcpServerRepository: McpServerRepository,
     private val client: OllamaClient,
 ) : ViewModel() {
 
@@ -49,8 +54,16 @@ class SettingsViewModel @Inject constructor(
         settingsRepository.settings,
         modelRepository.models,
         connectionStatus,
-    ) { settings, models, status ->
-        SettingsUiState(settings = settings, models = models, connectionStatus = status)
+        mcpServerRepository.servers,
+        mcpServerRepository.bindings,
+    ) { settings, models, status, mcpServers, mcpBindings ->
+        SettingsUiState(
+            settings = settings,
+            models = models,
+            connectionStatus = status,
+            mcpServerCount = mcpServers.size,
+            mcpToolCount = mcpBindings.size,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     init {

@@ -6,6 +6,10 @@ import dev.klaiber.cirrus.data.prefs.SecretCipher
 import dev.klaiber.cirrus.data.remote.ApiCredentials
 import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.OllamaException
+import dev.klaiber.cirrus.data.mcp.McpClient
+import dev.klaiber.cirrus.data.mcp.SseMcpTransport
+import dev.klaiber.cirrus.data.mcp.StreamableHttpMcpTransport
+import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.model.AppSettings
 import dev.klaiber.cirrus.domain.model.ChatMessage
@@ -16,6 +20,7 @@ import dev.klaiber.cirrus.domain.tools.ToolRegistry
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.domain.tools.GitHubToolSet
+import dev.klaiber.cirrus.domain.tools.McpToolSet
 import dev.klaiber.cirrus.domain.tools.github.CommentTool
 import dev.klaiber.cirrus.domain.tools.github.CreateIssueTool
 import dev.klaiber.cirrus.domain.tools.github.GetIssueTool
@@ -85,6 +90,12 @@ class ChatEngineTest {
         )
         // No GitHub token is configured, so the registry offers only the web tools here.
         val gitHubClient = GitHubClient(OkHttpClient(), json, gitHubCredentials)
+        val http = OkHttpClient()
+        val mcpClient = McpClient(
+            StreamableHttpMcpTransport(http),
+            SseMcpTransport(http, json),
+            json,
+        )
         return ToolRegistry(
             webSearchTool = WebSearchTool(client, settingsRepository),
             webFetchTool = WebFetchTool(client),
@@ -101,6 +112,17 @@ class ChatEngineTest {
                 comment = CommentTool(gitHubClient),
                 reviewPull = ReviewPullRequestTool(gitHubClient),
                 writeFile = WriteFileTool(gitHubClient),
+            ),
+            // No MCP server is attached, so this contributes nothing to the offered definitions.
+            mcpTools = McpToolSet(
+                repository = McpServerRepository(
+                    dataStore = dataStore,
+                    secretCipher = SecretCipher(),
+                    client = mcpClient,
+                    json = json,
+                    scope = scope,
+                ),
+                client = mcpClient,
             ),
             settingsRepository = settingsRepository,
             gitHubCredentials = gitHubCredentials,
