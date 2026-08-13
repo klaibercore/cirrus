@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.3.1] - 2026-08-13
+
 ### Fixed
 
 - **A GitHub tool could run when it was never offered.** The registry decides what to show the model
