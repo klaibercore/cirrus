@@ -5,14 +5,19 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.klaiber.cirrus.BuildConfig
 import dev.klaiber.cirrus.data.remote.OllamaClient
+import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsClient
+import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsVoice
 import dev.klaiber.cirrus.data.repository.ConversationRepository
 import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.model.AppSettings
 import dev.klaiber.cirrus.domain.model.GenerationParams
+import dev.klaiber.cirrus.domain.model.ElevenLabsModel
 import dev.klaiber.cirrus.domain.model.ModelInfo
+import dev.klaiber.cirrus.domain.model.SpeechEngine
 import dev.klaiber.cirrus.domain.model.ThemeMode
+import dev.klaiber.cirrus.domain.userMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +25,14 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/** Where the voice list is up to, shown under the picker. */
+sealed interface VoiceStatus {
+    data object Idle : VoiceStatus
+    data object Loading : VoiceStatus
+    data object Loaded : VoiceStatus
+    data class Failure(val message: String) : VoiceStatus
+}
 
 /** Result of the "test connection" probe, rendered inline under the key field. */
 sealed interface ConnectionStatus {
@@ -46,7 +59,15 @@ class SettingsViewModel @Inject constructor(
     private val modelRepository: ModelRepository,
     mcpServerRepository: McpServerRepository,
     private val client: OllamaClient,
+    private val elevenLabs: ElevenLabsClient,
 ) : ViewModel() {
+
+    /** The voices on the ElevenLabs account, fetched on demand because most users never look. */
+    private val _voices = MutableStateFlow<List<ElevenLabsVoice>>(emptyList())
+    val voices: StateFlow<List<ElevenLabsVoice>> = _voices
+
+    private val _voiceStatus = MutableStateFlow<VoiceStatus>(VoiceStatus.Idle)
+    val voiceStatus: StateFlow<VoiceStatus> = _voiceStatus
 
     private val connectionStatus = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Idle)
 
@@ -191,6 +212,55 @@ class SettingsViewModel @Inject constructor(
 
     fun setDefaultParams(params: GenerationParams) {
         viewModelScope.launch { settingsRepository.setDefaultParams(params) }
+    }
+
+    fun setReadAloudEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setReadAloudEnabled(enabled) }
+    }
+
+    fun setSpeechEngine(engine: SpeechEngine) {
+        viewModelScope.launch { settingsRepository.setSpeechEngine(engine) }
+    }
+
+    fun saveElevenLabsKey(key: String) {
+        viewModelScope.launch {
+            settingsRepository.setElevenLabsKey(key)
+            // A key is only useful once you can pick a voice with it, so fetch them straight away.
+            if (key.isNotBlank()) loadVoices()
+        }
+    }
+
+    fun clearElevenLabsKey() {
+        viewModelScope.launch {
+            settingsRepository.clearElevenLabsKey()
+            _voices.value = emptyList()
+            _voiceStatus.value = VoiceStatus.Idle
+        }
+    }
+
+    fun setElevenLabsModel(model: ElevenLabsModel) {
+        viewModelScope.launch { settingsRepository.setElevenLabsModel(model) }
+    }
+
+    fun setElevenLabsVoice(voice: ElevenLabsVoice) {
+        viewModelScope.launch { settingsRepository.setElevenLabsVoice(voice.id, voice.name) }
+    }
+
+    fun loadVoices() {
+        viewModelScope.launch {
+            _voiceStatus.value = VoiceStatus.Loading
+            runCatching { elevenLabs.voices() }.fold(
+                onSuccess = { list ->
+                    _voices.value = list
+                    _voiceStatus.value = if (list.isEmpty()) {
+                        VoiceStatus.Failure("That account has no voices.")
+                    } else {
+                        VoiceStatus.Loaded
+                    }
+                },
+                onFailure = { _voiceStatus.value = VoiceStatus.Failure(it.userMessage()) },
+            )
+        }
     }
 
     fun deleteAllConversations() {

@@ -1,17 +1,19 @@
 package dev.klaiber.cirrus.ui.markdown
 
+import dev.klaiber.cirrus.ui.markdown.math.MATH_BLACKBOARD
+import dev.klaiber.cirrus.ui.markdown.math.MATH_SYMBOLS
+
 /**
- * Renders a practical subset of LaTeX maths as Unicode.
+ * Flattens a LaTeX maths span to a single line of Unicode.
  *
- * Models reach for `$...$` constantly on technical questions — complexity bounds, Greek letters,
- * a stray `\approx` — and until now those arrived on screen verbatim, so an answer about big-O
- * read `$O(n) + O(n) = O(n)$`. Delimiters and backslashes are noise to everyone.
+ * Formulas are typeset properly on screen — see `math/MathTypesetter` — but a drawn formula is not
+ * text, and plenty of places need text: the string the clipboard receives when a message is
+ * copied, the alternate text behind an inline placeholder so that selecting a paragraph selects
+ * something sensible, the plain-text export, and what read-aloud speaks.
  *
- * This is not a typesetting engine and does not try to be. There is no layout: fractions become
- * `a/b`, and a superscript is only raised when Unicode happens to have the character. Anything
- * unrecognised degrades to its own name without the backslash, which is still strictly more
- * readable than the source. Rendering real LaTeX would mean a WebView or a font-level layout
- * engine, and neither is worth it to make `\approx` show up as ≈.
+ * There is no layout here on purpose: fractions become `a/b`, and a superscript is only raised
+ * when Unicode happens to have the character. Anything unrecognised degrades to its own name
+ * without the backslash, which is still strictly more readable than the source.
  *
  * Deliberately pure and string-in, string-out, so the whole mapping is testable without a
  * composition.
@@ -60,7 +62,7 @@ internal fun renderMathToUnicode(latex: String): String {
                 name == "mathbb" -> {
                     val body = readGroup(latex, index)
                     index = body.end
-                    out.append(BLACKBOARD[body.text] ?: body.text)
+                    out.append(MATH_BLACKBOARD[body.text] ?: body.text)
                 }
 
                 name == "text" || name == "mathrm" || name == "operatorname" ||
@@ -70,7 +72,7 @@ internal fun renderMathToUnicode(latex: String): String {
                     out.append(body.text)
                 }
 
-                else -> out.append(SYMBOLS[name] ?: name)
+                else -> out.append(MATH_SYMBOLS[name] ?: name)
             }
             continue
         }
@@ -179,52 +181,4 @@ private val SUBSCRIPTS: Map<Char, Char> = mapOf(
 
 private val VULGAR_FRACTIONS: Map<String, String> = mapOf(
     "1/2" to "½", "1/3" to "⅓", "2/3" to "⅔", "1/4" to "¼", "3/4" to "¾",
-)
-
-/**
- * The commands that actually turn up in model output. Anything absent degrades to its own name,
- * so the cost of an omission is small and the table does not need to be exhaustive.
- */
-private val SYMBOLS: Map<String, String> = mapOf(
-    // Relations
-    "approx" to "≈", "neq" to "≠", "ne" to "≠", "leq" to "≤", "le" to "≤",
-    "geq" to "≥", "ge" to "≥", "equiv" to "≡", "sim" to "∼", "simeq" to "≃",
-    "cong" to "≅", "propto" to "∝", "ll" to "≪", "gg" to "≫", "asymp" to "≍",
-    // Operators
-    "times" to "×", "div" to "÷", "pm" to "±", "mp" to "∓", "cdot" to "·",
-    "ast" to "∗", "star" to "⋆", "circ" to "∘", "bullet" to "•", "oplus" to "⊕",
-    "otimes" to "⊗", "sum" to "∑", "prod" to "∏", "int" to "∫", "oint" to "∮",
-    "partial" to "∂", "nabla" to "∇", "infty" to "∞", "surd" to "√",
-    // Sets and logic
-    "in" to "∈", "notin" to "∉", "ni" to "∋", "subset" to "⊂", "supset" to "⊃",
-    "subseteq" to "⊆", "supseteq" to "⊇", "cup" to "∪", "cap" to "∩",
-    "emptyset" to "∅", "varnothing" to "∅", "setminus" to "∖",
-    "forall" to "∀", "exists" to "∃", "nexists" to "∄",
-    "land" to "∧", "lor" to "∨", "lnot" to "¬", "neg" to "¬",
-    "therefore" to "∴", "because" to "∵",
-    // Arrows
-    "to" to "→", "rightarrow" to "→", "leftarrow" to "←", "leftrightarrow" to "↔",
-    "Rightarrow" to "⇒", "Leftarrow" to "⇐", "Leftrightarrow" to "⇔",
-    "mapsto" to "↦", "implies" to "⇒", "iff" to "⇔", "uparrow" to "↑", "downarrow" to "↓",
-    // Greek, lower case
-    "alpha" to "α", "beta" to "β", "gamma" to "γ", "delta" to "δ",
-    "epsilon" to "ε", "varepsilon" to "ε", "zeta" to "ζ", "eta" to "η",
-    "theta" to "θ", "vartheta" to "ϑ", "iota" to "ι", "kappa" to "κ",
-    "lambda" to "λ", "mu" to "μ", "nu" to "ν", "xi" to "ξ", "pi" to "π",
-    "rho" to "ρ", "sigma" to "σ", "tau" to "τ", "upsilon" to "υ",
-    "phi" to "φ", "varphi" to "φ", "chi" to "χ", "psi" to "ψ", "omega" to "ω",
-    // Greek, upper case
-    "Gamma" to "Γ", "Delta" to "Δ", "Theta" to "Θ", "Lambda" to "Λ", "Xi" to "Ξ",
-    "Pi" to "Π", "Sigma" to "Σ", "Upsilon" to "Υ", "Phi" to "Φ", "Psi" to "Ψ",
-    "Omega" to "Ω",
-    // Punctuation and spacing
-    "ldots" to "…", "cdots" to "⋯", "dots" to "…", "vdots" to "⋮", "ddots" to "⋱",
-    "quad" to "  ", "qquad" to "    ", "space" to " ",
-    "angle" to "∠", "perp" to "⊥", "parallel" to "∥", "degree" to "°",
-    "prime" to "′", "hbar" to "ℏ", "ell" to "ℓ", "aleph" to "ℵ",
-)
-
-/** Blackboard bold, for the number sets that turn up in complexity discussions. */
-private val BLACKBOARD: Map<String, String> = mapOf(
-    "R" to "ℝ", "N" to "ℕ", "Z" to "ℤ", "Q" to "ℚ", "C" to "ℂ", "P" to "ℙ", "E" to "𝔼",
 )

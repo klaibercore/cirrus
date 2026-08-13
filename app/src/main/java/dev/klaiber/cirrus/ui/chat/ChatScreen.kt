@@ -32,11 +32,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.DropdownMenu
@@ -49,6 +53,8 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -63,7 +69,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -76,6 +86,7 @@ import dev.klaiber.cirrus.ui.chat.components.MessageActionsSheet
 import dev.klaiber.cirrus.ui.chat.components.MessageItem
 import dev.klaiber.cirrus.ui.chat.components.ModelPickerSheet
 import dev.klaiber.cirrus.ui.chat.components.ParametersSheet
+import dev.klaiber.cirrus.ui.chat.components.SpeechButtonState
 import dev.klaiber.cirrus.ui.util.rememberClipboard
 import dev.klaiber.cirrus.ui.voice.rememberVoiceInput
 import kotlinx.coroutines.launch
@@ -93,6 +104,7 @@ fun ChatScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val isRefreshingModels by viewModel.isRefreshingModels.collectAsStateWithLifecycle()
     val isLoadingModelDetails by viewModel.isLoadingModelDetails.collectAsStateWithLifecycle()
+    val speaking by viewModel.speaking.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboard = rememberClipboard()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -186,9 +198,29 @@ fun ChatScreen(
         }
     }
 
+    // Searching moves the transcript; streaming must not fight it, which is why the follow-the-tail
+    // effect above stands down whenever the reader has scrolled away from the bottom.
+    val visibleIds = state.messages
+        .filter { it.role == Role.USER || it.role == Role.ASSISTANT }
+        .map { it.id }
+    LaunchedEffect(state.search.currentId, state.search.matchIds) {
+        val target = state.search.currentId ?: return@LaunchedEffect
+        val index = visibleIds.indexOf(target)
+        if (index >= 0) listState.animateScrollToItem(index)
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
+            if (state.search.isActive) {
+                FindBar(
+                    search = state.search,
+                    onQueryChange = viewModel::onSearchQueryChange,
+                    onPrevious = viewModel::previousMatch,
+                    onNext = viewModel::nextMatch,
+                    onClose = viewModel::closeSearch,
+                )
+            } else {
             TopAppBar(
                 title = {
                     Column(
@@ -235,6 +267,14 @@ fun ChatScreen(
                             onDismissRequest = { showOverflow = false },
                         ) {
                             DropdownMenuItem(
+                                text = { Text("Find in conversation") },
+                                enabled = state.messages.isNotEmpty(),
+                                onClick = {
+                                    showOverflow = false
+                                    viewModel.openSearch()
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Parameters") },
                                 onClick = {
                                     showOverflow = false
@@ -263,6 +303,7 @@ fun ChatScreen(
                     containerColor = MaterialTheme.colorScheme.surface,
                 ),
             )
+            }
         },
         bottomBar = {
             Column(Modifier.navigationBarsPadding().imePadding()) {
@@ -334,6 +375,13 @@ fun ChatScreen(
                             showStats = state.settings.showStats,
                             renderMarkdown = state.settings.renderMarkdown,
                             developerMode = state.settings.developerMode,
+                            highlight = state.search.highlight,
+                            speech = when {
+                                !state.settings.readAloudEnabled -> SpeechButtonState.HIDDEN
+                                speaking?.messageId != message.id -> SpeechButtonState.IDLE
+                                speaking?.isPreparing == true -> SpeechButtonState.PREPARING
+                                else -> SpeechButtonState.SPEAKING
+                            },
                             onCopy = { text ->
                                 clipboard.copy(text)
                                 if (!clipboard.showsSystemConfirmation) {
@@ -343,6 +391,7 @@ fun ChatScreen(
                             },
                             onRegenerate = { viewModel.regenerate(message.id) },
                             onBranch = { viewModel.branchFrom(message.id) },
+                            onSpeak = { viewModel.readAloud(message.id) },
                             onMore = { actionTargetId = message.id },
                         )
                     }
@@ -420,6 +469,71 @@ fun ChatScreen(
             )
         }
     }
+}
+
+/**
+ * The find bar, in place of the title bar.
+ *
+ * Replacing the bar rather than floating over the transcript keeps every line of the conversation
+ * visible while searching, which is the whole point of searching it. The counter reads
+ * "3/12" — messages, not occurrences, because that is what the arrows step through.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FindBar(
+    search: ChatSearch,
+    onQueryChange: (String) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    TopAppBar(
+        title = {
+            TextField(
+                value = search.query,
+                onValueChange = onQueryChange,
+                placeholder = { Text("Find in conversation") },
+                singleLine = true,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onNext() }),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
+            )
+        },
+        navigationIcon = {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Outlined.Close, contentDescription = "Close search")
+            }
+        },
+        actions = {
+            if (search.query.isNotBlank()) {
+                Text(
+                    text = search.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onPrevious, enabled = search.hasMatches) {
+                Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = "Previous match")
+            }
+            IconButton(onClick = onNext, enabled = search.hasMatches) {
+                Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "Next match")
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    )
 }
 
 /**

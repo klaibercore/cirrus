@@ -14,11 +14,15 @@
     <!-- Dictation in the composer. Requested at the moment the microphone is first tapped. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <!-- Package visibility: without this, SpeechRecognizer cannot see the recognition service
-         on Android 11+ and reports that no recogniser exists. -->
+    <!-- Package visibility: without these, Android 11+ hides the services behind them. Speech
+         recognition reports that no recogniser exists, and TextToSpeech fails to bind to any
+         engine at all — both look like the feature is broken rather than invisible. -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
     </queries>
 

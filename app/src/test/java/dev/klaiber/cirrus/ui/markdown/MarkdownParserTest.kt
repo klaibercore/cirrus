@@ -152,4 +152,56 @@ class MarkdownParserTest {
         val paragraph = blocks.single() as MdBlock.Paragraph
         assertEquals("**bold", paragraph.text)
     }
+
+    @Test
+    fun `a display formula on its own line is its own block`() {
+        val blocks = MarkdownParser.parse("Before\n\n\$\$E = mc^2\$\$\n\nAfter")
+        assertEquals(3, blocks.size)
+        val math = blocks[1] as MdBlock.Math
+        assertEquals("E = mc^2", math.latex)
+        assertTrue(math.isComplete)
+    }
+
+    @Test
+    fun `a display formula may span several lines`() {
+        val blocks = MarkdownParser.parse("\$\$\na = b\n+ c\n\$\$")
+        assertEquals("a = b\n+ c", (blocks.single() as MdBlock.Math).latex)
+    }
+
+    @Test
+    fun `bracket delimiters open a display block too`() {
+        assertEquals("x = 1", (MarkdownParser.parse("\\[x = 1\\]").single() as MdBlock.Math).latex)
+    }
+
+    @Test
+    fun `a maths environment keeps its own delimiters for the maths parser`() {
+        val source = "\\begin{pmatrix}\na & b\n\\end{pmatrix}"
+        val math = MarkdownParser.parse(source).single() as MdBlock.Math
+        assertTrue(math.latex.startsWith("\\begin{pmatrix}"))
+        assertTrue(math.latex.endsWith("\\end{pmatrix}"))
+    }
+
+    @Test
+    fun `an unterminated formula still renders what has arrived`() {
+        // Exactly what the last block of a streaming answer looks like.
+        val math = MarkdownParser.parse("\$\$\n\\frac{a}{b}").single() as MdBlock.Math
+        assertEquals("\\frac{a}{b}", math.latex)
+        assertFalse(math.isComplete)
+    }
+
+    @Test
+    fun `a formula with prose after it stays a paragraph`() {
+        // "$$x$$ and so on" is a sentence with a formula in it, not a displayed equation.
+        val blocks = MarkdownParser.parse("\$\$x\$\$ and so on")
+        assertTrue(blocks.single() is MdBlock.Paragraph)
+    }
+
+    @Test
+    fun `a paragraph is not swallowed by the formula that follows it`() {
+        val blocks = MarkdownParser.parse("The result:\n\$\$x = 1\$\$")
+        assertEquals(2, blocks.size)
+        assertTrue(blocks[0] is MdBlock.Paragraph)
+        assertTrue(blocks[1] is MdBlock.Math)
+    }
+
 }

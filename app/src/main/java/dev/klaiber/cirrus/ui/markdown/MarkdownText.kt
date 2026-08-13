@@ -26,6 +26,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.takeOrElse
+import dev.klaiber.cirrus.ui.markdown.math.MathBlock
+import dev.klaiber.cirrus.ui.markdown.math.rememberMathTypesetter
 import dev.klaiber.cirrus.ui.theme.LocalCodeColors
 
 /**
@@ -40,9 +44,10 @@ fun MarkdownText(
     modifier: Modifier = Modifier,
     textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
     color: Color = MaterialTheme.colorScheme.onSurface,
+    highlight: String = "",
 ) {
     val blocks = remember(markdown) { MarkdownParser.parse(markdown) }
-    MarkdownBlocks(blocks, modifier, textStyle, color)
+    MarkdownBlocks(blocks, modifier, textStyle, color, highlight)
 }
 
 @Composable
@@ -51,8 +56,9 @@ fun MarkdownBlocks(
     modifier: Modifier = Modifier,
     textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
     color: Color = MaterialTheme.colorScheme.onSurface,
+    highlight: String = "",
 ) {
-    val styles = markdownStyles()
+    val styles = markdownStyles(textStyle, color, highlight)
     Column(modifier = modifier) {
         blocks.forEachIndexed { index, block ->
             if (index > 0) Spacer(Modifier.height(blockSpacing(block)))
@@ -61,13 +67,58 @@ fun MarkdownBlocks(
     }
 }
 
+/**
+ * One set of styles — and one maths typesetter — for a whole document.
+ *
+ * The typesetter is built at the body size rather than per block, so an inline formula in a
+ * heading is set at reading size. That is the right trade: formulas in headings are rare, and a
+ * typesetter per block would throw away the measurement cache on every one.
+ */
 @Composable
-private fun markdownStyles(): MarkdownStyles {
+private fun markdownStyles(
+    textStyle: TextStyle,
+    color: Color,
+    highlight: String,
+): MarkdownStyles {
     val codeColors = LocalCodeColors.current
+    val math = rememberMathTypesetter(textStyle.fontSize.takeOrElse { DEFAULT_MATH_SIZE }, color)
     return MarkdownStyles(
         linkColor = MaterialTheme.colorScheme.primary,
         inlineCodeColor = codeColors.keyword,
         inlineCodeBackground = codeColors.background,
+        math = math,
+        highlight = highlight,
+        highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = HIGHLIGHT_ALPHA),
+    )
+}
+
+/**
+ * A paragraph of inline markdown, including any typeset formulas it contains.
+ *
+ * Memoised on the source text: a streaming message re-renders on every token, and typesetting is
+ * the expensive part of that.
+ */
+@Composable
+private fun MarkdownParagraph(
+    text: String,
+    style: TextStyle,
+    color: Color,
+    styles: MarkdownStyles,
+    modifier: Modifier = Modifier,
+    textAlign: TextAlign? = null,
+) {
+    val inline = remember(text, styles) {
+        buildInlineMarkdown(text, styles).let {
+            it.copy(annotated = it.annotated.highlighting(styles.highlight, styles.highlightColor))
+        }
+    }
+    Text(
+        text = inline.annotated,
+        inlineContent = inline.inlineContent,
+        style = style,
+        color = color,
+        textAlign = textAlign ?: TextAlign.Unspecified,
+        modifier = modifier,
     )
 }
 
@@ -75,6 +126,7 @@ private fun blockSpacing(block: MdBlock) = when (block) {
     is MdBlock.Heading -> 16.dp
     is MdBlock.Code -> 12.dp
     is MdBlock.Table -> 12.dp
+    is MdBlock.Math -> 14.dp
     else -> 10.dp
 }
 
@@ -86,15 +138,13 @@ private fun RenderBlock(
     styles: MarkdownStyles,
 ) {
     when (block) {
-        is MdBlock.Paragraph -> Text(
-            text = buildInlineMarkdown(block.text, styles),
-            style = textStyle,
-            color = color,
-        )
+        is MdBlock.Paragraph -> MarkdownParagraph(block.text, textStyle, color, styles)
 
-        is MdBlock.Heading -> Text(
-            text = buildInlineMarkdown(block.text, styles),
-            style = headingStyle(block.level),
+        is MdBlock.Heading -> MarkdownParagraph(block.text, headingStyle(block.level), color, styles)
+
+        is MdBlock.Math -> MathBlock(
+            latex = block.latex,
+            fontSize = textStyle.fontSize.takeOrElse { DEFAULT_MATH_SIZE },
             color = color,
         )
 
@@ -186,11 +236,7 @@ private fun ListRow(
             modifier = Modifier.width(if (marker.length > 2) 28.dp else 20.dp),
         )
         Column(Modifier.weight(1f)) {
-            Text(
-                text = buildInlineMarkdown(item.text, styles),
-                style = textStyle,
-                color = color,
-            )
+            MarkdownParagraph(item.text, textStyle, color, styles)
             if (item.children.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 item.children.forEachIndexed { index, child ->
@@ -236,10 +282,11 @@ private fun MarkdownTable(
     ) {
         Row(modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp)) {
             table.header.forEachIndexed { column, cell ->
-                Text(
-                    text = buildInlineMarkdown(cell, styles),
+                MarkdownParagraph(
+                    text = cell,
                     style = textStyle.copy(fontWeight = FontWeight.SemiBold),
                     color = color,
+                    styles = styles,
                     textAlign = table.alignments.getOrNull(column).toTextAlign(),
                     modifier = Modifier
                         .width(widths.getOrElse(column) { 120.dp })
@@ -251,10 +298,11 @@ private fun MarkdownTable(
         table.rows.forEach { row ->
             Row(modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 row.forEachIndexed { column, cell ->
-                    Text(
-                        text = buildInlineMarkdown(cell, styles),
+                    MarkdownParagraph(
+                        text = cell,
                         style = textStyle,
                         color = color,
+                        styles = styles,
                         textAlign = table.alignments.getOrNull(column).toTextAlign(),
                         modifier = Modifier
                             .width(widths.getOrElse(column) { 120.dp })
@@ -271,3 +319,9 @@ private fun MdAlignment?.toTextAlign(): TextAlign = when (this) {
     MdAlignment.END -> TextAlign.End
     else -> TextAlign.Start
 }
+
+/** Used when a caller hands over a style with no explicit size for maths to match. */
+private val DEFAULT_MATH_SIZE = 16.sp
+
+/** Enough tint to find a match at a glance, not so much that the text under it stops reading. */
+private const val HIGHLIGHT_ALPHA = 0.3f

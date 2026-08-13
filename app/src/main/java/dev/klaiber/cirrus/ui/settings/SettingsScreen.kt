@@ -24,6 +24,8 @@ import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -48,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -55,6 +58,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsVoice
+import dev.klaiber.cirrus.domain.model.ElevenLabsModel
+import dev.klaiber.cirrus.domain.model.SpeechEngine
 import dev.klaiber.cirrus.domain.model.ThemeMode
 import dev.klaiber.cirrus.ui.components.HelpBadge
 import dev.klaiber.cirrus.ui.components.HelpTooltip
@@ -67,6 +73,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val voices by viewModel.voices.collectAsStateWithLifecycle()
+    val voiceStatus by viewModel.voiceStatus.collectAsStateWithLifecycle()
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -211,6 +219,42 @@ fun SettingsScreen(
                 onCheckedChange = viewModel::setPreferOnDeviceRecognition,
                 enabled = state.settings.voiceInputEnabled,
             )
+            SwitchRow(
+                title = "Read answers aloud",
+                subtitle = "Show a speak button under finished replies",
+                help = "Adds a control that reads a reply out. What gets spoken is not the raw " +
+                    "markdown: code blocks are announced rather than dictated, links are read as " +
+                    "\"link\", tables are read as heading-and-value pairs, and maths is spoken as " +
+                    "words — x squared, not x two.",
+                checked = state.settings.readAloudEnabled,
+                onCheckedChange = viewModel::setReadAloudEnabled,
+            )
+            if (state.settings.readAloudEnabled) {
+                SpeechEngineSelector(
+                    selected = state.settings.speechEngine,
+                    onSelect = viewModel::setSpeechEngine,
+                )
+                if (state.settings.speechEngine == SpeechEngine.ELEVENLABS) {
+                    ElevenLabsKeyField(
+                        hasKey = state.settings.hasElevenLabsKey,
+                        onSave = viewModel::saveElevenLabsKey,
+                        onClear = viewModel::clearElevenLabsKey,
+                    )
+                    if (state.settings.hasElevenLabsKey) {
+                        VoicePicker(
+                            selectedName = state.settings.elevenLabsVoiceName,
+                            voices = voices,
+                            status = voiceStatus,
+                            onLoad = viewModel::loadVoices,
+                            onSelect = viewModel::setElevenLabsVoice,
+                        )
+                        ElevenLabsModelPicker(
+                            selected = ElevenLabsModel.fromId(state.settings.elevenLabsModelId),
+                            onSelect = viewModel::setElevenLabsModel,
+                        )
+                    }
+                }
+            }
 
             SectionHeader("Appearance")
             ThemeSelector(
@@ -349,6 +393,212 @@ private fun SectionHeader(text: String) {
         color = MaterialTheme.colorScheme.primary,
     )
     Spacer(Modifier.height(8.dp))
+}
+
+/**
+ * Which engine speaks.
+ *
+ * Both are always offered, even without a key: seeing that ElevenLabs exists is how anyone
+ * discovers they can have a voice that does not sound like a satnav. Picking it reveals the key
+ * field rather than nagging beforehand.
+ */
+@Composable
+private fun SpeechEngineSelector(selected: SpeechEngine, onSelect: (SpeechEngine) -> Unit) {
+    Column(Modifier.padding(vertical = 8.dp)) {
+        LabelWithHelp(
+            label = "Voice engine",
+            help = "The device engine is free, works offline and is installed already. " +
+                "ElevenLabs sounds dramatically better and is worth it for long answers, but " +
+                "every sentence spoken costs characters from your account there. Cirrus falls " +
+                "back to the device engine whenever the key is missing.",
+        )
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            SpeechEngine.entries.forEachIndexed { index, engine ->
+                SegmentedButton(
+                    selected = engine == selected,
+                    onClick = { onSelect(engine) },
+                    shape = SegmentedButtonDefaults.itemShape(index, SpeechEngine.entries.size),
+                    label = { Text(engine.label, style = MaterialTheme.typography.labelMedium) },
+                )
+            }
+        }
+        Text(
+            text = selected.description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
+@Composable
+private fun ElevenLabsKeyField(hasKey: Boolean, onSave: (String) -> Unit, onClear: () -> Unit) {
+    var draft by remember { mutableStateOf("") }
+    var visible by remember { mutableStateOf(false) }
+
+    Column(Modifier.padding(top = 8.dp)) {
+        LabelWithHelp(
+            label = "ElevenLabs API key",
+            help = "From elevenlabs.io/app/settings/api-keys. Stored on this device only, " +
+                "encrypted with the same device-bound key as everything else here, and sent " +
+                "only to api.elevenlabs.io — never to Ollama, and your Ollama key is never sent " +
+                "to ElevenLabs.",
+        )
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            label = { Text(if (hasKey) "Replace key" else "ElevenLabs key") },
+            placeholder = { Text("sk_…") },
+            singleLine = true,
+            visualTransformation = if (visible) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            trailingIcon = {
+                IconButton(onClick = { visible = !visible }) {
+                    Icon(
+                        imageVector = if (visible) {
+                            Icons.Outlined.VisibilityOff
+                        } else {
+                            Icons.Outlined.Visibility
+                        },
+                        contentDescription = if (visible) "Hide key" else "Show key",
+                    )
+                }
+            },
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    onSave(draft)
+                    draft = ""
+                },
+                enabled = draft.isNotBlank(),
+            ) {
+                Text("Save key")
+            }
+            if (hasKey) {
+                TextButton(onClick = onClear) { Text("Remove") }
+            }
+        }
+        if (!hasKey) {
+            Text(
+                text = "Without a key, read-aloud quietly uses the device engine instead.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun VoicePicker(
+    selectedName: String,
+    voices: List<ElevenLabsVoice>,
+    status: VoiceStatus,
+    onLoad: () -> Unit,
+    onSelect: (ElevenLabsVoice) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(Modifier.padding(top = 12.dp)) {
+        LabelWithHelp(
+            label = "Voice",
+            help = "Every voice on your ElevenLabs account, including ones you cloned or made " +
+                "yourself. Cirrus uses the default voice until you pick one.",
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable {
+                    if (voices.isEmpty()) onLoad() else expanded = true
+                }
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = selectedName.ifBlank { "Default voice" },
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+            if (status == VoiceStatus.Loading) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else {
+                Text(
+                    text = if (voices.isEmpty()) "Load voices" else "Change",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            voices.forEach { voice ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(voice.name)
+                            voice.description?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    },
+                    onClick = {
+                        onSelect(voice)
+                        expanded = false
+                    },
+                )
+            }
+        }
+        (status as? VoiceStatus.Failure)?.let {
+            Text(
+                text = it.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ElevenLabsModelPicker(
+    selected: ElevenLabsModel,
+    onSelect: (ElevenLabsModel) -> Unit,
+) {
+    Column(Modifier.padding(top = 12.dp)) {
+        LabelWithHelp(
+            label = "Synthesis model",
+            help = "How the audio is made. Flash starts talking soonest, which is what matters " +
+                "when you are waiting to hear an answer; the others sound better but keep you " +
+                "waiting longer before the first word.",
+        )
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            ElevenLabsModel.entries.forEachIndexed { index, model ->
+                SegmentedButton(
+                    selected = model == selected,
+                    onClick = { onSelect(model) },
+                    shape = SegmentedButtonDefaults.itemShape(index, ElevenLabsModel.entries.size),
+                    label = { Text(model.label, style = MaterialTheme.typography.labelMedium) },
+                )
+            }
+        }
+        Text(
+            text = selected.description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
 }
 
 @Composable

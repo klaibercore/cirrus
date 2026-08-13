@@ -50,4 +50,12 @@ data class AppSettings(
      * to the network recogniser when the platform has no on-device model for the locale.
      */
     val preferOnDeviceRecognition: Boolean = true,
+    /** Shows the read-aloud control on finished answers. */
+    val readAloudEnabled: Boolean = true,
+    val speechEngine: SpeechEngine = SpeechEngine.DEVICE,
+    val hasElevenLabsKey: Boolean = false,
+    /** Blank until a voice is picked, at which point the client falls back to a sensible default. */
+    val elevenLabsVoiceId: String = "",
+    val elevenLabsVoiceName: String = "",
+    val elevenLabsModelId: String = ElevenLabsModel.Default.id,
 )

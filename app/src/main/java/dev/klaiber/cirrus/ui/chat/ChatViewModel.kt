@@ -9,6 +9,7 @@ import dev.klaiber.cirrus.data.AttachmentImporter
 import dev.klaiber.cirrus.data.repository.ConversationRepository
 import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
+import dev.klaiber.cirrus.domain.SpeechController
 import dev.klaiber.cirrus.domain.TurnController
 import dev.klaiber.cirrus.domain.userMessage
 import dev.klaiber.cirrus.domain.model.Attachment
@@ -16,6 +17,7 @@ import dev.klaiber.cirrus.domain.model.ChatMessage
 import dev.klaiber.cirrus.domain.model.Conversation
 import dev.klaiber.cirrus.domain.model.GenerationParams
 import dev.klaiber.cirrus.domain.model.Role
+import dev.klaiber.cirrus.ui.markdown.markdownToSpeech
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -38,6 +40,7 @@ class ChatViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val modelRepository: ModelRepository,
     private val turnController: TurnController,
+    private val speechController: SpeechController,
     private val attachmentImporter: AttachmentImporter,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -60,6 +63,15 @@ class ChatViewModel @Inject constructor(
         savedStateHandle.get<String>(ARG_CONVERSATION_ID)?.takeIf { it.isNotBlank() },
     )
     private val editor = MutableStateFlow(EditorState())
+
+    /** Only what the user typed; which messages match is derived from the transcript. */
+    private data class SearchInput(
+        val isActive: Boolean = false,
+        val query: String = "",
+        val index: Int = 0,
+    )
+
+    private val search = MutableStateFlow(SearchInput())
 
     private val eventChannel = Channel<ChatEvent>(Channel.BUFFERED)
     val events: Flow<ChatEvent> = eventChannel.receiveAsFlow()
@@ -99,7 +111,8 @@ class ChatViewModel @Inject constructor(
         settingsRepository.settings,
         modelRepository.models,
         editor,
-    ) { core, settings, models, editorState ->
+        search,
+    ) { core, settings, models, editorState, searchInput ->
         val (conversation, messages, turnState) = core
         ChatUiState(
             conversation = conversation,
@@ -112,8 +125,51 @@ class ChatViewModel @Inject constructor(
             availableModels = models,
             errorBanner = editorState.error ?: turnState.error,
             needsApiKey = !settings.hasApiKey && settings.baseUrl.contains("ollama.com"),
+            search = searchInput.resolve(messages),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
+
+    /**
+     * Which messages contain the query, and which of those is currently in view.
+     *
+     * The index is clamped rather than reset as the transcript changes: a reply that lands while
+     * the search bar is open must not throw away where the reader had got to.
+     */
+    private fun SearchInput.resolve(messages: List<ChatMessage>): ChatSearch {
+        if (!isActive || query.isBlank()) return ChatSearch(isActive = isActive, query = query)
+        val matches = messages
+            .filter { it.role == Role.USER || it.role == Role.ASSISTANT }
+            .filter { it.content.contains(query, ignoreCase = true) }
+            .map { it.id }
+        return ChatSearch(
+            isActive = true,
+            query = query,
+            matchIds = matches,
+            currentIndex = index.coerceIn(0, (matches.size - 1).coerceAtLeast(0)),
+        )
+    }
+
+    fun openSearch() = search.update { it.copy(isActive = true) }
+
+    fun closeSearch() {
+        search.value = SearchInput()
+    }
+
+    /** A new query starts at the first match, not wherever the last one had wandered to. */
+    fun onSearchQueryChange(query: String) = search.update {
+        it.copy(query = query, index = 0)
+    }
+
+    fun nextMatch() = stepMatch(1)
+
+    fun previousMatch() = stepMatch(-1)
+
+    private fun stepMatch(delta: Int) {
+        val total = uiState.value.search.matchIds.size
+        if (total == 0) return
+        // Wrapping is what every find bar does, and the alternative is a button that stops working.
+        search.update { it.copy(index = ((it.index + delta) % total + total) % total) }
+    }
 
     /** Exposed separately from [uiState] so a refresh spinner cannot recompose the transcript. */
     val isRefreshingModels: StateFlow<Boolean> = modelRepository.isRefreshing
@@ -121,8 +177,32 @@ class ChatViewModel @Inject constructor(
     /** True while `/api/show` is still filling in capabilities behind an already-visible list. */
     val isLoadingModelDetails: StateFlow<Boolean> = modelRepository.isLoadingDetails
 
+    /** Which message is being read aloud, if any. Owned by [SpeechController], not by this screen. */
+    val speaking: StateFlow<SpeechController.Speaking?> = speechController.speaking
+
     init {
         viewModelScope.launch { modelRepository.refreshIfEmpty() }
+        // A failed synthesis has to say so somewhere; silence is indistinguishable from a bug.
+        viewModelScope.launch {
+            speechController.errors.collect { message ->
+                if (message != null) {
+                    editor.update { it.copy(error = message) }
+                    speechController.clearError()
+                }
+            }
+        }
+    }
+
+    /**
+     * Reads an answer aloud, or stops if it is already reading that one.
+     *
+     * The markdown is converted here rather than in the controller: turning a document into
+     * something worth hearing is a rendering decision, and the controller's job is only to make
+     * sound come out.
+     */
+    fun readAloud(messageId: String) {
+        val message = uiState.value.messages.firstOrNull { it.id == messageId } ?: return
+        speechController.toggle(messageId, markdownToSpeech(message.content))
     }
 
     fun refreshModels() {

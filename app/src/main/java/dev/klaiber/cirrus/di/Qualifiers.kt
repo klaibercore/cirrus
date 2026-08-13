@@ -29,3 +29,15 @@ annotation class GitHubHttp
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class McpHttp
+
+/**
+ * The HTTP client for the ElevenLabs API.
+ *
+ * Its own client for the same reason GitHub has one: the Ollama client attaches the Ollama key to
+ * every request, and a text-to-speech vendor has no business receiving it. The ElevenLabs key
+ * travels in `xi-api-key`, not `Authorization`, so it also cannot be mistaken for a bearer token
+ * by anything downstream.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class ElevenLabsHttp

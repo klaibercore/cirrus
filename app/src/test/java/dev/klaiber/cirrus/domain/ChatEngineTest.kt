@@ -17,6 +17,7 @@ import dev.klaiber.cirrus.domain.model.Conversation
 import dev.klaiber.cirrus.domain.model.GenerationParams
 import dev.klaiber.cirrus.domain.model.Role
 import dev.klaiber.cirrus.domain.tools.ToolRegistry
+import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.domain.tools.GitHubToolSet
@@ -85,6 +86,7 @@ class ChatEngineTest {
             secretCipher = SecretCipher(),
             credentials = ApiCredentials(),
             gitHubCredentials = gitHubCredentials,
+            elevenLabsCredentials = ElevenLabsCredentials(),
             json = json,
             scope = scope,
         )

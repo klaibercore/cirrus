@@ -40,9 +40,11 @@ app/src/main/java/dev/klaiber/cirrus/
 │   ├── components/         # HelpTooltip / HelpBadge, shared across screens
 │   ├── voice/              # VoiceInput — SpeechRecognizer hoisted into Compose state
 │   ├── markdown/           # MarkdownParser, MarkdownInline, SyntaxHighlighter, CodeBlock
+│   │   └── math/           # LaTeX: MathParser → MathTypesetter → MathBox, plus MathSpeech
 │   └── theme/              # Color, Type, Theme (Material 3, dynamic color support)
 ├── domain/
 │   ├── ChatEngine.kt       # the turn protocol: build request → stream → service tool calls
+│   ├── SpeechController.kt # read-aloud: chunking, ElevenLabs or the device engine, playback
 │   ├── TurnController.kt   # owns running turns on the application scope; persistence + errors
 │   ├── ConversationTitler.kt # when a thread is named, from what, and what to do on failure
 │   ├── ErrorMessages.kt    # the one place a failure becomes a sentence (Throwable.userMessage)
@@ -51,7 +53,8 @@ app/src/main/java/dev/klaiber/cirrus/
 │       └── github/         # 11 GitHub tools + shared schema/argument plumbing
 ├── data/
 │   ├── remote/             # OllamaClient (OkHttp + NDJSON), DTOs, ApiCredentials, exceptions
-│   │   └── github/         # GitHubClient (REST v3), DTOs, GitHubCredentials
+│   │   ├── github/         # GitHubClient (REST v3), DTOs, GitHubCredentials
+│   │   └── elevenlabs/     # ElevenLabsClient (text-to-speech), ElevenLabsCredentials
 │   ├── mcp/                # McpClient + transports, McpCatalog (known servers)
 │   ├── local/              # Room database, DAOs, entities, mappers
 │   ├── repository/         # Conversation/Settings/Model + McpServerRepository
@@ -108,6 +111,19 @@ app/src/main/java/dev/klaiber/cirrus/
   not hammered.
 - **`ConversationRepository`** — Room-backed conversation/message/preset persistence, plus
   fork/truncate/rename operations.
+- **`MathTypesetter`** — lays out a parsed formula as a tree of `MathBox`es, each a width plus a
+  baseline splitting an ascent from a descent. The rules are TeX's in miniature: fractions and
+  stretched delimiters centre on the *axis* (¼ em above the baseline) rather than on the baseline,
+  scripts shrink to 0.72 and then stop, and the space between two atoms comes from their classes —
+  `a+b` looser than `ab`, `a=b` looser still. That last rule is most of what separates maths from a
+  row of symbols. Delimiters and radicals are stroked paths, not glyphs, so their weight stays
+  constant however far they stretch. `MathParser` is pure Kotlin and carries the test suite;
+  layout is judged by eye.
+- **`SpeechController`** — owns read-aloud on the application scope, for the same reason
+  `TurnController` does: audio outlives the screen. One message speaks at a time. Long answers are
+  split at sentence ends, and the hosted path synthesises one chunk ahead of the one playing so
+  there is no gap at the seam. ElevenLabs needs a key and is opt-in; without one it falls back to
+  Android's own engine rather than failing.
 
 ### Data flow for a chat turn
 
@@ -141,6 +157,11 @@ app/src/main/java/dev/klaiber/cirrus/
   the UI — or the model — can pick the right recovery.
 - **Cancellation** is respected end-to-end: stopping a generation cancels the collector, which
   cancels the OkHttp call so the server stops too.
+- **Maths** is typeset, not flattened: `$…$` becomes an `InlineTextContent` placeholder inside the
+  paragraph and `$$…$$` its own `MdBlock.Math`. `renderMathToUnicode` still exists and is still the
+  right answer for every context that needs *text* — the clipboard, the export, the alternate text
+  behind a placeholder (which is what makes a selected paragraph copy as `x² + 1` rather than as a
+  hole), and `speakMath` for read-aloud.
 - **Help text** lives next to the control it explains, via `HelpBadge`/`HelpTooltip`. If you add
   a setting or a parameter, it needs help copy — that is the whole point of the pattern.
 
@@ -217,6 +238,14 @@ Unit tests live in `app/src/test/java/...` mirroring the main package. Run with
   process is frozen by the OS within seconds, which stalls the socket read until the connection
   dies. Anything that has to survive the screen belongs on the application scope, with
   `GenerationService` up for as long as it runs.
+- Anything that speaks, records or renders on a Canvas has a package-visibility catch: without a
+  `<queries>` entry for `android.intent.action.TTS_SERVICE`, `TextToSpeech` silently binds to no
+  engine on Android 11+, exactly as `SpeechRecognizer` does without its own.
+- Compose's `PlaceholderVerticalAlign.AboveBaseline` puts the *bottom* of an inline placeholder on
+  the text baseline, so anything with a descender hangs below the line. Inline maths is made
+  symmetric about the maths axis and aligned with `TextCenter` instead.
+- The billows of the launcher icon are deliberately narrower than its base. Lining their outer
+  edges up exactly puts a visible dent in each side of the cloud where the two arcs cross.
 - A stream that ends without a chunk carrying `done` is **truncated, not finished**
   (`OllamaException.Truncated`). Treating it as a normal completion is what makes half an answer
   look like the model's final word. `ChatEngine` re-issues such a round only while it has emitted
