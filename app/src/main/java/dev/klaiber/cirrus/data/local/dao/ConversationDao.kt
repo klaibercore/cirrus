@@ -62,6 +62,17 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE id = :id")
     suspend fun getById(id: String): ConversationEntity?
 
+    /** Threads touched since a point in time, newest first — what the nightly pass reads. */
+    @Query(
+        """
+        SELECT * FROM conversations
+        WHERE updatedAt > :since AND archived = 0
+        ORDER BY updatedAt DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun updatedSince(since: Long, limit: Int): List<ConversationEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(conversation: ConversationEntity)
 

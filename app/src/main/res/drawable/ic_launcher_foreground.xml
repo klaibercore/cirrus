@@ -1,17 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Just the cloud.
+
+    Built from three overlapping billows over a stadium-shaped base rather than one traced outline.
+    The union of simple circles is what gives the emoji its soft, even bumps, and each piece stays
+    readable at 48dp where a hand-tuned bezier turns to mush.
+
+    The billows are deliberately tucked inside the base's width, so the base's rounded ends define
+    the silhouette low down and the billows define it up top. Letting them line up exactly instead
+    puts a visible dent in each side where the two arcs cross.
+
+    Everything sits inside the adaptive icon's safe zone — the centre 72dp of 108 — so no launcher
+    mask clips a bump off.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Stylised cirrus streak over a chat cloud. -->
+    <!-- Flat-bottomed base with fully rounded ends. -->
     <path
-        android:fillColor="#F2F0EC"
-        android:pathData="M40,66 C33.4,66 28,60.6 28,54 C28,47.9 32.6,42.8 38.5,42.1 C40.2,35.1 46.5,30 54,30 C61.5,30 67.8,35.1 69.5,42.1 C75.4,42.8 80,47.9 80,54 C80,60.6 74.6,66 68,66 Z" />
+        android:fillColor="#F5F3EF"
+        android:pathData="M31,58 L77,58 A11,11 0 0,1 77,80 L31,80 A11,11 0 0,1 31,58 Z" />
+    <!-- The tall middle billow. -->
     <path
-        android:fillColor="#C8703C"
-        android:pathData="M36,72 L60,72 A2.5,2.5 0 0,1 60,77 L36,77 A2.5,2.5 0 0,1 36,72 Z" />
+        android:fillColor="#F5F3EF"
+        android:pathData="M35,46 a19,19 0 1,0 38,0 a19,19 0 1,0 -38,0 Z" />
+    <!-- Right shoulder. -->
     <path
-        android:fillColor="#C8703C"
-        android:pathData="M46,80 L72,80 A2.5,2.5 0 0,1 72,85 L46,85 A2.5,2.5 0 0,1 46,80 Z" />
+        android:fillColor="#F5F3EF"
+        android:pathData="M55,55 a15,15 0 1,0 30,0 a15,15 0 1,0 -30,0 Z" />
+    <!-- Left shoulder, the smallest of the three. -->
+    <path
+        android:fillColor="#F5F3EF"
+        android:pathData="M23,57 a14,14 0 1,0 28,0 a14,14 0 1,0 -28,0 Z" />
 </vector>

@@ -50,4 +50,21 @@ data class AppSettings(
      * to the network recogniser when the platform has no on-device model for the locale.
      */
     val preferOnDeviceRecognition: Boolean = true,
+    /** Shows the read-aloud control on finished answers. */
+    val readAloudEnabled: Boolean = true,
+    val speechEngine: SpeechEngine = SpeechEngine.DEVICE,
+    val hasElevenLabsKey: Boolean = false,
+    /** Blank until a voice is picked, at which point the client falls back to a sensible default. */
+    val elevenLabsVoiceId: String = "",
+    val elevenLabsVoiceName: String = "",
+    val elevenLabsModelId: String = ElevenLabsModel.Default.id,
+    /** Offers the remember/recall/forget tools, and sends pinned memories with every turn. */
+    val memoryEnabled: Boolean = true,
+    /** Lets a model put something on the notification shade. */
+    val notificationToolEnabled: Boolean = true,
+    /** Runs the nightly pass that merges duplicate memories and retires stale ones. */
+    val memoryConsolidationEnabled: Boolean = true,
+    /** Local hour at which that pass runs. Late enough to be asleep, early enough to be charged. */
+    val memoryConsolidationHour: Int = 3,
+    val lastConsolidationAt: Long = 0L,
 )

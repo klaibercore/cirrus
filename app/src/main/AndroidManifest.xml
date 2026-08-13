@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -14,11 +15,15 @@
     <!-- Dictation in the composer. Requested at the moment the microphone is first tapped. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <!-- Package visibility: without this, SpeechRecognizer cannot see the recognition service
-         on Android 11+ and reports that no recogniser exists. -->
+    <!-- Package visibility: without these, Android 11+ hides the services behind them. Speech
+         recognition reports that no recogniser exists, and TextToSpeech fails to bind to any
+         engine at all — both look like the feature is broken rather than invisible. -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
     </queries>
 
@@ -56,6 +61,19 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
+
+        <!-- Hilt builds the workers, so WorkManager must not initialise itself first: the
+             on-demand initialiser in CirrusApp installs the Hilt worker factory instead. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
 
         <!-- Runs only while a turn is in flight and stops itself as soon as one is not. -->
         <service

@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,7 +36,10 @@ import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.StopCircle
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
@@ -57,6 +62,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -66,6 +72,7 @@ import dev.klaiber.cirrus.domain.model.GenerationStats
 import dev.klaiber.cirrus.domain.model.Role
 import dev.klaiber.cirrus.domain.model.ToolInvocation
 import dev.klaiber.cirrus.ui.markdown.MarkdownText
+import dev.klaiber.cirrus.ui.markdown.highlighting
 import dev.klaiber.cirrus.ui.markdown.MonospaceBlock
 import dev.klaiber.cirrus.ui.util.formatBytes
 import dev.klaiber.cirrus.ui.util.formatNanos
@@ -83,22 +90,28 @@ fun MessageItem(
     showStats: Boolean,
     renderMarkdown: Boolean,
     developerMode: Boolean,
+    speech: SpeechButtonState,
+    highlight: String,
     onCopy: (String) -> Unit,
     onRegenerate: () -> Unit,
     onBranch: () -> Unit,
+    onSpeak: () -> Unit,
     onMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when (message.role) {
-        Role.USER -> UserMessage(message, onMore, modifier)
+        Role.USER -> UserMessage(message, highlight, onMore, modifier)
         Role.ASSISTANT -> AssistantMessage(
             message = message,
             showStats = showStats,
             renderMarkdown = renderMarkdown,
             developerMode = developerMode,
+            speech = speech,
+            highlight = highlight,
             onCopy = onCopy,
             onRegenerate = onRegenerate,
             onBranch = onBranch,
+            onSpeak = onSpeak,
             onMore = onMore,
             modifier = modifier,
         )
@@ -118,6 +131,7 @@ fun MessageItem(
 @Composable
 private fun UserMessage(
     message: ChatMessage,
+    highlight: String,
     onMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -151,7 +165,7 @@ private fun UserMessage(
                     ),
             ) {
                 Text(
-                    text = message.content,
+                    text = AnnotatedString(message.content).highlighting(highlight, highlightColor()),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
@@ -167,29 +181,22 @@ private fun AssistantMessage(
     showStats: Boolean,
     renderMarkdown: Boolean,
     developerMode: Boolean,
+    speech: SpeechButtonState,
+    highlight: String,
     onCopy: (String) -> Unit,
     onRegenerate: () -> Unit,
     onBranch: () -> Unit,
+    onSpeak: () -> Unit,
     onMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val haptics = LocalHapticFeedback.current
-
+    // The body is selectable, so long-press belongs to the text: it starts a selection rather than
+    // opening the actions sheet. Nothing is lost — every action is one tap away in the row below,
+    // and picking a sentence out of an answer is worth more than a second route to a menu.
+    SelectionContainer(modifier) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
-                // No ripple: an answer can be a screenful, and flashing all of it on every tap
-                // is noise. The haptic is the feedback that the long-press registered.
-                indication = null,
-                onClick = {},
-                onLongClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onMore()
-                },
-                onLongClickLabel = "Message actions",
-            )
             // Announce the finished answer, not every token: TalkBack reading a response as it
             // streams is unusable, and silence when one arrives is worse. There is no "off" mode,
             // so the region is only declared once the turn has landed — which is also the moment
@@ -216,10 +223,10 @@ private fun AssistantMessage(
 
         if (message.content.isNotBlank()) {
             if (renderMarkdown) {
-                MarkdownText(markdown = message.content)
+                MarkdownText(markdown = message.content, highlight = highlight)
             } else {
                 Text(
-                    text = message.content,
+                    text = AnnotatedString(message.content).highlighting(highlight, highlightColor()),
                     style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
                 )
             }
@@ -235,9 +242,11 @@ private fun AssistantMessage(
 
         if (!message.isStreaming && message.content.isNotBlank()) {
             MessageActions(
+                speech = speech,
                 onCopy = { onCopy(message.content) },
                 onRegenerate = onRegenerate,
                 onBranch = onBranch,
+                onSpeak = onSpeak,
                 onMore = onMore,
             )
         }
@@ -249,6 +258,7 @@ private fun AssistantMessage(
         if (developerMode && message.rawRequestJson != null) {
             RawRequestSection(message.rawRequestJson)
         }
+    }
     }
 }
 
@@ -403,21 +413,45 @@ private fun ToolCard(invocation: ToolInvocation, modifier: Modifier = Modifier) 
     }
 }
 
+/** What the read-aloud button should show for this message. */
+enum class SpeechButtonState { HIDDEN, IDLE, PREPARING, SPEAKING }
+
 @Composable
 private fun MessageActions(
+    speech: SpeechButtonState,
     onCopy: () -> Unit,
     onRegenerate: () -> Unit,
     onBranch: () -> Unit,
+    onSpeak: () -> Unit,
     onMore: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.padding(top = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
-    ) {
-        ActionIcon(Icons.Outlined.ContentCopy, "Copy message", onCopy)
-        ActionIcon(Icons.Outlined.Refresh, "Regenerate response", onRegenerate)
-        ActionIcon(Icons.Outlined.AltRoute, "Branch from here", onBranch)
-        ActionIcon(Icons.Outlined.MoreHoriz, "More actions", onMore)
+    // Icons in a selectable region would otherwise be swept up by a selection drag.
+    DisableSelection {
+        Row(
+            modifier = Modifier.padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(0.dp),
+        ) {
+            ActionIcon(Icons.Outlined.ContentCopy, "Copy message", onCopy)
+            if (speech != SpeechButtonState.HIDDEN) {
+                ActionIcon(
+                    icon = when (speech) {
+                        SpeechButtonState.SPEAKING -> Icons.Outlined.StopCircle
+                        SpeechButtonState.PREPARING -> Icons.Outlined.HourglassEmpty
+                        else -> Icons.Outlined.RecordVoiceOver
+                    },
+                    description = when (speech) {
+                        SpeechButtonState.SPEAKING -> "Stop reading aloud"
+                        SpeechButtonState.PREPARING -> "Preparing audio, tap to cancel"
+                        else -> "Read aloud"
+                    },
+                    tint = if (speech == SpeechButtonState.IDLE) null else MaterialTheme.colorScheme.primary,
+                    onClick = onSpeak,
+                )
+            }
+            ActionIcon(Icons.Outlined.Refresh, "Regenerate response", onRegenerate)
+            ActionIcon(Icons.Outlined.AltRoute, "Branch from here", onBranch)
+            ActionIcon(Icons.Outlined.MoreHoriz, "More actions", onMore)
+        }
     }
 }
 
@@ -433,12 +467,13 @@ private fun ActionIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     onClick: () -> Unit,
+    tint: androidx.compose.ui.graphics.Color? = null,
 ) {
     IconButton(onClick = onClick, modifier = Modifier.minimumInteractiveComponentSize()) {
         Icon(
             imageVector = icon,
             contentDescription = description,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = tint ?: MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(17.dp),
         )
     }
@@ -634,6 +669,10 @@ private fun AttachmentChip(attachment: Attachment, onRemove: ((String) -> Unit)?
         }
     }
 }
+
+/** The same tint the markdown renderer uses, so a match looks the same wherever it is found. */
+@Composable
+private fun highlightColor() = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
 
 /** Extracts a one-line hint from a tool's argument JSON without a full parse. */
 private fun summarizeArguments(argumentsJson: String): String =

@@ -5,13 +5,17 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import dev.klaiber.cirrus.data.prefs.SecretCipher
 import dev.klaiber.cirrus.data.remote.ApiCredentials
+import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.di.ApplicationScope
 import dev.klaiber.cirrus.domain.model.AppSettings
+import dev.klaiber.cirrus.domain.model.ElevenLabsModel
 import dev.klaiber.cirrus.domain.model.GenerationParams
+import dev.klaiber.cirrus.domain.model.SpeechEngine
 import dev.klaiber.cirrus.domain.model.ThemeMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +39,7 @@ class SettingsRepository @Inject constructor(
     private val secretCipher: SecretCipher,
     private val credentials: ApiCredentials,
     private val gitHubCredentials: GitHubCredentials,
+    private val elevenLabsCredentials: ElevenLabsCredentials,
     private val json: Json,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
@@ -55,6 +60,9 @@ class SettingsRepository @Inject constructor(
                     // Writes need the tools switched on as well; either flag off means no writes.
                     writesAllowed = (prefs[Keys.GITHUB_TOOLS] ?: false) &&
                         (prefs[Keys.GITHUB_WRITES] ?: false),
+                )
+                elevenLabsCredentials.update(
+                    apiKey = prefs[Keys.ELEVENLABS_KEY]?.let(secretCipher::decrypt),
                 )
             }
         }
@@ -142,6 +150,54 @@ class SettingsRepository @Inject constructor(
         it[Keys.ON_DEVICE_RECOGNITION] = enabled
     }
 
+    suspend fun setReadAloudEnabled(enabled: Boolean) = edit { it[Keys.READ_ALOUD] = enabled }
+
+    suspend fun setSpeechEngine(engine: SpeechEngine) = edit { it[Keys.SPEECH_ENGINE] = engine.name }
+
+    /** Stored with the same Keystore-backed envelope encryption as every other secret here. */
+    suspend fun setElevenLabsKey(rawKey: String) {
+        val trimmed = rawKey.trim()
+        dataStore.edit { prefs ->
+            if (trimmed.isEmpty()) {
+                prefs.remove(Keys.ELEVENLABS_KEY)
+            } else {
+                val encrypted = secretCipher.encrypt(trimmed)
+                if (encrypted != null) {
+                    prefs[Keys.ELEVENLABS_KEY] = encrypted
+                } else {
+                    prefs.remove(Keys.ELEVENLABS_KEY)
+                }
+            }
+        }
+    }
+
+    suspend fun clearElevenLabsKey() = setElevenLabsKey("")
+
+    suspend fun setElevenLabsVoice(id: String, name: String) = edit {
+        it[Keys.ELEVENLABS_VOICE] = id
+        it[Keys.ELEVENLABS_VOICE_NAME] = name
+    }
+
+    suspend fun setElevenLabsModel(model: ElevenLabsModel) = edit {
+        it[Keys.ELEVENLABS_MODEL] = model.id
+    }
+
+    suspend fun setMemoryEnabled(enabled: Boolean) = edit { it[Keys.MEMORY_ENABLED] = enabled }
+
+    suspend fun setNotificationToolEnabled(enabled: Boolean) = edit {
+        it[Keys.NOTIFICATION_TOOL] = enabled
+    }
+
+    suspend fun setMemoryConsolidationEnabled(enabled: Boolean) = edit {
+        it[Keys.CONSOLIDATION_ENABLED] = enabled
+    }
+
+    suspend fun setMemoryConsolidationHour(hour: Int) = edit {
+        it[Keys.CONSOLIDATION_HOUR] = hour.coerceIn(0, 23)
+    }
+
+    suspend fun setLastConsolidationAt(at: Long) = edit { it[Keys.LAST_CONSOLIDATION] = at }
+
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         dataStore.edit(block)
     }
@@ -171,6 +227,19 @@ class SettingsRepository @Inject constructor(
         gitHubWritesAllowed = this[Keys.GITHUB_WRITES] ?: false,
         voiceInputEnabled = this[Keys.VOICE_INPUT] ?: true,
         preferOnDeviceRecognition = this[Keys.ON_DEVICE_RECOGNITION] ?: true,
+        readAloudEnabled = this[Keys.READ_ALOUD] ?: true,
+        speechEngine = this[Keys.SPEECH_ENGINE]
+            ?.let { name -> runCatching { SpeechEngine.valueOf(name) }.getOrNull() }
+            ?: SpeechEngine.DEVICE,
+        hasElevenLabsKey = this[Keys.ELEVENLABS_KEY] != null,
+        elevenLabsVoiceId = this[Keys.ELEVENLABS_VOICE] ?: "",
+        elevenLabsVoiceName = this[Keys.ELEVENLABS_VOICE_NAME] ?: "",
+        elevenLabsModelId = this[Keys.ELEVENLABS_MODEL] ?: ElevenLabsModel.Default.id,
+        memoryEnabled = this[Keys.MEMORY_ENABLED] ?: true,
+        notificationToolEnabled = this[Keys.NOTIFICATION_TOOL] ?: true,
+        memoryConsolidationEnabled = this[Keys.CONSOLIDATION_ENABLED] ?: true,
+        memoryConsolidationHour = this[Keys.CONSOLIDATION_HOUR] ?: 3,
+        lastConsolidationAt = this[Keys.LAST_CONSOLIDATION] ?: 0L,
     )
 
     private object Keys {
@@ -194,5 +263,16 @@ class SettingsRepository @Inject constructor(
         val GITHUB_WRITES = booleanPreferencesKey("github_writes")
         val VOICE_INPUT = booleanPreferencesKey("voice_input")
         val ON_DEVICE_RECOGNITION = booleanPreferencesKey("on_device_recognition")
+        val READ_ALOUD = booleanPreferencesKey("read_aloud")
+        val SPEECH_ENGINE = stringPreferencesKey("speech_engine")
+        val ELEVENLABS_KEY = stringPreferencesKey("elevenlabs_key_encrypted")
+        val ELEVENLABS_VOICE = stringPreferencesKey("elevenlabs_voice")
+        val ELEVENLABS_VOICE_NAME = stringPreferencesKey("elevenlabs_voice_name")
+        val ELEVENLABS_MODEL = stringPreferencesKey("elevenlabs_model")
+        val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
+        val NOTIFICATION_TOOL = booleanPreferencesKey("notification_tool")
+        val CONSOLIDATION_ENABLED = booleanPreferencesKey("consolidation_enabled")
+        val CONSOLIDATION_HOUR = intPreferencesKey("consolidation_hour")
+        val LAST_CONSOLIDATION = longPreferencesKey("last_consolidation")
     }
 }

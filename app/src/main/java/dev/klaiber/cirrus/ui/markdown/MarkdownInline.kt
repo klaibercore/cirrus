@@ -1,5 +1,7 @@
 package dev.klaiber.cirrus.ui.markdown
 
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -12,11 +14,33 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import dev.klaiber.cirrus.ui.markdown.math.MathTypesetter
+import dev.klaiber.cirrus.ui.markdown.math.inlineMath
 
-data class MarkdownStyles(
+internal data class MarkdownStyles(
     val linkColor: Color,
     val inlineCodeColor: Color,
     val inlineCodeBackground: Color,
+    /**
+     * Typesets `$…$` spans properly. Null falls back to the Unicode approximation, which is what
+     * the JVM tests use and what any caller without a composition gets.
+     */
+    val math: MathTypesetter? = null,
+    /** What find-in-conversation is looking for; every occurrence gets a background. */
+    val highlight: String = "",
+    val highlightColor: Color = Color.Unspecified,
+)
+
+/**
+ * Inline markdown, ready for [androidx.compose.material3.Text].
+ *
+ * [inlineContent] holds the typeset formulas. They are placeholders in [annotated] rather than
+ * characters, so the string still reads as text — the Unicode form of each formula stands in its
+ * place, which is what the clipboard gets when the paragraph is selected and copied.
+ */
+internal data class InlineMarkdown(
+    val annotated: AnnotatedString,
+    val inlineContent: Map<String, InlineTextContent> = emptyMap(),
 )
 
 /**
@@ -26,10 +50,17 @@ data class MarkdownStyles(
  * delimiter without a partner is emitted as literal text — which is what a half-streamed
  * `**bold` looks like a moment before its closing marker arrives.
  */
-fun buildInlineMarkdown(text: String, styles: MarkdownStyles): AnnotatedString =
-    buildAnnotatedString { appendInline(text, styles) }
+internal fun buildInlineMarkdown(text: String, styles: MarkdownStyles): InlineMarkdown {
+    val contents = mutableMapOf<String, InlineTextContent>()
+    val annotated = buildAnnotatedString { appendInline(text, styles, contents) }
+    return InlineMarkdown(annotated, contents)
+}
 
-private fun AnnotatedString.Builder.appendInline(text: String, styles: MarkdownStyles) {
+private fun AnnotatedString.Builder.appendInline(
+    text: String,
+    styles: MarkdownStyles,
+    contents: MutableMap<String, InlineTextContent>,
+) {
     var index = 0
     val plain = StringBuilder()
 
@@ -51,9 +82,7 @@ private fun AnnotatedString.Builder.appendInline(text: String, styles: MarkdownS
             val math = parseMath(text, index)
             if (math != null) {
                 flush()
-                withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
-                    append(renderMathToUnicode(math.body))
-                }
+                appendMath(math.body, styles, contents)
                 index = math.endIndex
                 continue
             }
@@ -96,7 +125,7 @@ private fun AnnotatedString.Builder.appendInline(text: String, styles: MarkdownS
             } else {
                 flush()
                 withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
-                    appendInline(text.substring(index + 2, closeIndex), styles)
+                    appendInline(text.substring(index + 2, closeIndex), styles, contents)
                 }
                 index = closeIndex + 2
             }
@@ -130,7 +159,7 @@ private fun AnnotatedString.Builder.appendInline(text: String, styles: MarkdownS
                     SpanStyle(fontStyle = FontStyle.Italic)
                 }
                 withStyle(span) {
-                    appendInline(text.substring(contentStart, closeIndex), styles)
+                    appendInline(text.substring(contentStart, closeIndex), styles, contents)
                 }
                 index = closeIndex + delimiter.length
             }
@@ -142,7 +171,7 @@ private fun AnnotatedString.Builder.appendInline(text: String, styles: MarkdownS
             if (parsed != null) {
                 flush()
                 withLink(linkAnnotation(parsed.url, styles)) {
-                    appendInline(parsed.label, styles)
+                    appendInline(parsed.label, styles, contents)
                 }
                 index = parsed.endIndex
                 continue
@@ -182,6 +211,29 @@ private fun AnnotatedString.Builder.appendInline(text: String, styles: MarkdownS
         index++
     }
     flush()
+}
+
+/**
+ * Places one inline formula.
+ *
+ * The typeset box goes in as a placeholder; the Unicode form of the same formula goes in as the
+ * text behind it. That is what makes a rendered paragraph copyable — select it and the clipboard
+ * gets `x² + 1`, not a gap where the maths was.
+ */
+private fun AnnotatedString.Builder.appendMath(
+    body: String,
+    styles: MarkdownStyles,
+    contents: MutableMap<String, InlineTextContent>,
+) {
+    val fallback = renderMathToUnicode(body).ifBlank { body }
+    val typesetter = styles.math
+    if (typesetter == null || fallback.isEmpty()) {
+        withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(fallback) }
+        return
+    }
+    val id = "math-${contents.size}"
+    contents[id] = typesetter.inlineMath(body)
+    appendInlineContent(id, fallback)
 }
 
 private class Math(val body: String, val endIndex: Int)
@@ -320,3 +372,24 @@ private fun String.indexOfDelimiter(from: Int, delimiter: String): Int {
 }
 
 private val TRAILING_PUNCTUATION = setOf('.', ',', ';', ':', '!', '?', ')', ']', '}', '"', '\'')
+
+/**
+ * Marks every occurrence of [query], leaving the spans already on the string intact.
+ *
+ * Applied after the markdown is built rather than during it: a match can straddle a bold run or
+ * an inline code span, and trying to catch that while parsing would mean the search knowing about
+ * every construct in the grammar.
+ */
+internal fun AnnotatedString.highlighting(query: String, color: Color): AnnotatedString {
+    if (query.isBlank() || color == Color.Unspecified) return this
+    var at = text.indexOf(query, ignoreCase = true)
+    if (at < 0) return this
+
+    return buildAnnotatedString {
+        append(this@highlighting)
+        while (at >= 0) {
+            addStyle(SpanStyle(background = color), at, at + query.length)
+            at = text.indexOf(query, at + query.length, ignoreCase = true)
+        }
+    }
+}

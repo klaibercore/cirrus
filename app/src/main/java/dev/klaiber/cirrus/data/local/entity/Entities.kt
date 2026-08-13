@@ -100,6 +100,49 @@ data class PresetEntity(
     val createdAt: Long,
 )
 
+/**
+ * A remembered sentence.
+ *
+ * Indexed on the two things every read filters by: whether it is retired, and whether it is
+ * pinned — pinned memories are fetched on every single turn, so that lookup has to be cheap.
+ */
+@Entity(
+    tableName = "memories",
+    indices = [Index("archived"), Index("pinned"), Index("updatedAt")],
+)
+data class MemoryEntity(
+    @PrimaryKey val id: String,
+    val content: String,
+    val kind: String,
+    val sourceConversationId: String?,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val lastRecalledAt: Long?,
+    val recallCount: Int,
+    val pinned: Boolean,
+    val archived: Boolean,
+    val confidence: Float,
+)
+
+/** A scheduled prompt. [daysMask] packs the weekdays into seven bits, Monday first. */
+@Entity(tableName = "agents", indices = [Index("enabled")])
+data class AgentEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val prompt: String,
+    val model: String?,
+    val minuteOfDay: Int,
+    val daysMask: Int,
+    val enabled: Boolean,
+    val toolsEnabled: Boolean,
+    val notifyOnFinish: Boolean,
+    val createdAt: Long,
+    val lastRunAt: Long?,
+    val lastStatus: String?,
+    val lastSummary: String?,
+    val lastConversationId: String?,
+)
+
 data class MessageWithAttachments(
     @Embedded val message: MessageEntity,
     @Relation(parentColumn = "id", entityColumn = "messageId")

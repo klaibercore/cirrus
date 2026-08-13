@@ -2,6 +2,7 @@ package dev.klaiber.cirrus.di
 
 import dev.klaiber.cirrus.BuildConfig
 import dev.klaiber.cirrus.data.remote.ApiCredentials
+import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dagger.Module
 import dagger.Provides
@@ -83,6 +84,41 @@ object NetworkModule {
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .callTimeout(60, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+
+    /**
+     * A client for ElevenLabs.
+     *
+     * Separate again, and for the same reason: no other key may travel to it. Synthesis of a long
+     * answer takes a while to come back, so the read timeout is generous — but it is bounded,
+     * because unlike a generation there is nothing to watch while it hangs.
+     */
+    @Provides
+    @Singleton
+    @ElevenLabsHttp
+    fun provideElevenLabsOkHttpClient(credentials: ElevenLabsCredentials): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val builder = chain.request().newBuilder()
+                    .header("User-Agent", "Cirrus/${BuildConfig.VERSION_NAME} (Android)")
+                credentials.apiKey?.let { key -> builder.header("xi-api-key", key) }
+                chain.proceed(builder.build())
+            }
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    addInterceptor(
+                        HttpLoggingInterceptor().apply {
+                            level = HttpLoggingInterceptor.Level.BASIC
+                            redactHeader("xi-api-key")
+                        },
+                    )
+                }
+            }
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(120, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
 

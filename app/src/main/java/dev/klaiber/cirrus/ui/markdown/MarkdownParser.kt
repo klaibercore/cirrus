@@ -12,6 +12,15 @@ sealed interface MdBlock {
      */
     data class Code(val language: String?, val code: String, val isComplete: Boolean) : MdBlock
 
+    /**
+     * A displayed equation, on its own line: `$$…$$`, `\[…\]`, or a maths environment.
+     *
+     * [isComplete] is false while the closing delimiter has not arrived, which is the normal state
+     * of the last block of a streaming answer. It renders either way — a formula that appears a
+     * term at a time is how every other block behaves here.
+     */
+    data class Math(val latex: String, val isComplete: Boolean) : MdBlock
+
     data class Quote(val blocks: List<MdBlock>) : MdBlock
 
     data class BulletList(val items: List<MdListItem>) : MdBlock
@@ -67,7 +76,17 @@ object MarkdownParser {
                 continue
             }
 
+            // Display maths is resolved first because it is the only construct whose opener can
+            // turn out not to be one: `$$x$$ and then some prose` is a paragraph with an inline
+            // formula in it, and that is only knowable after finding the closing delimiter.
+            val math = readMath(lines, index)
+
             when {
+                math != null -> {
+                    blocks += math.first
+                    index = math.second
+                }
+
                 FENCE.matches(line) -> {
                     val match = FENCE.matchEntire(line)!!
                     val fence = match.groupValues[2]
@@ -151,6 +170,71 @@ object MarkdownParser {
             code = body.joinToString("\n"),
             isComplete = closed,
         ) to index
+    }
+
+    /**
+     * The delimiter that opens a displayed equation on this line, or null.
+     *
+     * Only a line that *starts* with the delimiter counts. Prose is full of dollar signs, and
+     * "it costs $$5" must not become an equation; inline `$…$` is handled where inline spans are,
+     * with its own rules about what may sit next to the delimiter.
+     */
+    private fun mathOpener(line: String): String? {
+        val trimmed = line.trimStart()
+        return when {
+            trimmed.startsWith("$$") -> "$$"
+            trimmed.startsWith("\\[") -> "\\["
+            trimmed.startsWith("\\begin{") -> {
+                val name = trimmed.removePrefix("\\begin{").substringBefore('}')
+                if (name.removeSuffix("*") in MATH_ENVIRONMENTS) "\\begin{$name}" else null
+            }
+
+            else -> null
+        }
+    }
+
+    /**
+     * Reads a displayed equation starting at [start], or returns null when this is not one.
+     *
+     * Null means "let the paragraph path have it": either the line does not open maths at all, or
+     * the closing delimiter has prose after it, which makes the whole thing a sentence with an
+     * inline formula rather than a block.
+     */
+    private fun readMath(lines: List<String>, start: Int): Pair<MdBlock.Math, Int>? {
+        val opener = mathOpener(lines[start]) ?: return null
+        // An environment keeps its own delimiters: `\begin{pmatrix}` is what tells the maths
+        // parser it is looking at a matrix. `$$` and `\[` carry no meaning past this point.
+        val keepDelimiters = opener.startsWith("\\begin")
+        val closer = when (opener) {
+            "$$" -> "$$"
+            "\\[" -> "\\]"
+            else -> "\\end{" + opener.removePrefix("\\begin{")
+        }
+
+        val body = StringBuilder()
+        val first = lines[start]
+        val openerAt = first.indexOf(opener)
+        var index = start
+        var rest = first.substring(if (keepDelimiters) openerAt else openerAt + opener.length)
+        // The opening `\begin{…}` must not be mistaken for its own terminator.
+        var searchFrom = if (keepDelimiters) opener.length else 0
+
+        while (true) {
+            val at = rest.indexOf(closer, searchFrom)
+            if (at >= 0) {
+                if (rest.substring(at + closer.length).isNotBlank()) return null
+                body.append(rest, 0, if (keepDelimiters) at + closer.length else at)
+                return MdBlock.Math(body.toString().trim(), isComplete = true) to index + 1
+            }
+            body.append(rest).append('\n')
+            index++
+            // Unterminated: the tail of a streaming answer. Show what has arrived.
+            if (index >= lines.size) {
+                return MdBlock.Math(body.toString().trim(), isComplete = false) to index
+            }
+            rest = lines[index]
+            searchFrom = 0
+        }
     }
 
     private fun readQuote(lines: List<String>, start: Int): Pair<MdBlock.Quote, Int> {
@@ -290,7 +374,8 @@ object MarkdownParser {
                 BULLET.matches(line) ||
                 ORDERED.matches(line) ||
                 line.trimStart().startsWith(">") ||
-                isTableStart(lines, index)
+                isTableStart(lines, index) ||
+                readMath(lines, index) != null
             ) {
                 if (index == start) {
                     // Never stall: consume the line so the caller always advances.
@@ -308,4 +393,14 @@ object MarkdownParser {
 
     /** Spaces stripped from continuation lines before re-parsing them as nested blocks. */
     private const val CHILD_INDENT_UNIT = 2
+
+    /**
+     * Environments that stand on their own line as a displayed equation. A `\begin{pmatrix}` in
+     * the middle of a sentence is inline maths and is not listed here.
+     */
+    private val MATH_ENVIRONMENTS = setOf(
+        "equation", "displaymath", "align", "aligned", "alignat", "gather", "gathered",
+        "multline", "split", "cases", "array",
+        "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix",
+    )
 }

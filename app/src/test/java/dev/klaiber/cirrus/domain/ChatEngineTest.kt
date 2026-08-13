@@ -16,7 +16,17 @@ import dev.klaiber.cirrus.domain.model.ChatMessage
 import dev.klaiber.cirrus.domain.model.Conversation
 import dev.klaiber.cirrus.domain.model.GenerationParams
 import dev.klaiber.cirrus.domain.model.Role
+import dev.klaiber.cirrus.data.local.dao.MemoryDao
+import dev.klaiber.cirrus.data.local.entity.MemoryEntity
+import dev.klaiber.cirrus.data.repository.MemoryRepository
+import dev.klaiber.cirrus.domain.notify.Notifier
+import dev.klaiber.cirrus.domain.tools.ForgetTool
+import dev.klaiber.cirrus.domain.tools.MemoryToolSet
+import dev.klaiber.cirrus.domain.tools.RecallTool
+import dev.klaiber.cirrus.domain.tools.RememberTool
+import dev.klaiber.cirrus.domain.tools.SendNotificationTool
 import dev.klaiber.cirrus.domain.tools.ToolRegistry
+import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.domain.tools.GitHubToolSet
@@ -80,11 +90,13 @@ class ChatEngineTest {
             File(System.getProperty("java.io.tmpdir"), "cirrus-settings-${System.nanoTime()}.preferences_pb")
         }
         val gitHubCredentials = GitHubCredentials()
+        val memoryRepository = MemoryRepository(EmptyMemoryDao())
         val settingsRepository = SettingsRepository(
             dataStore = dataStore,
             secretCipher = SecretCipher(),
             credentials = ApiCredentials(),
             gitHubCredentials = gitHubCredentials,
+            elevenLabsCredentials = ElevenLabsCredentials(),
             json = json,
             scope = scope,
         )
@@ -124,6 +136,12 @@ class ChatEngineTest {
                 ),
                 client = mcpClient,
             ),
+            memoryTools = MemoryToolSet(
+                RememberTool(memoryRepository),
+                RecallTool(memoryRepository),
+                ForgetTool(memoryRepository),
+            ),
+            notificationTool = SendNotificationTool(RecordingNotifier()),
             settingsRepository = settingsRepository,
             gitHubCredentials = gitHubCredentials,
         )
@@ -261,10 +279,12 @@ class ChatEngineTest {
         server.enqueue(simpleResponse())
         val history = listOf(userMessage("one"), userMessage("two"), userMessage("three"))
         engine.respond(conversation(), history, AppSettings(contextMessageLimit = 2)).toList()
+        // Asserted on the messages rather than the whole body: tool descriptions are in there too,
+        // and one of them legitimately contains the word "one".
         val body = server.takeRequest().body!!.utf8()
-        assertTrue(body.contains("two"))
-        assertTrue(body.contains("three"))
-        assertFalse(body.contains("one"))
+        assertTrue(body.contains(""""content":"two""""))
+        assertTrue(body.contains(""""content":"three""""))
+        assertFalse(body.contains(""""content":"one""""))
     }
 
     // ---- Tool loop ------------------------------------------------------------------------
@@ -414,8 +434,12 @@ class ChatEngineTest {
     }
 
     @Test
-    fun `does not execute tools when disabled`() = runTest {
+    fun `does not execute an external tool when the conversation has them switched off`() = runTest {
+        // The switch governs what may reach off the phone. A model that asks for web_search anyway
+        // — from an earlier turn, or by guessing — has to be told the tool does not exist, or the
+        // switch is decoration.
         server.enqueue(toolCallResponse())
+        server.enqueue(simpleResponse())
 
         val events = engine.respond(
             conversation(toolsEnabled = false),
@@ -423,9 +447,9 @@ class ChatEngineTest {
             AppSettings(),
         ).toList()
 
-        assertTrue(events.filterIsInstance<TurnEvent.ToolStarted>().isEmpty())
+        val finished = events.filterIsInstance<TurnEvent.ToolFinished>()
+        assertTrue(finished.all { it.invocation.errorMessage?.contains("Unknown tool") == true })
         assertTrue(events.filterIsInstance<TurnEvent.Finished>().isNotEmpty())
-        assertEquals(1, server.requestCount)
     }
 
     // ---- Titles and errors -----------------------------------------------------------------
@@ -509,5 +533,40 @@ class ChatEngineTest {
             assertTrue(awaitItem() is TurnEvent.RequestPrepared)
             assertTrue(awaitError() is OllamaException.Unauthorized)
         }
+    }
+}
+
+/**
+ * A memory store with nothing in it.
+ *
+ * The tool loop under test never touches memory; this exists so the registry can be built without
+ * dragging Room into a JVM test.
+ */
+private class EmptyMemoryDao : MemoryDao {
+    override fun observeActive() = kotlinx.coroutines.flow.flowOf(emptyList<MemoryEntity>())
+    override fun observeAll() = kotlinx.coroutines.flow.flowOf(emptyList<MemoryEntity>())
+    override fun observeActiveCount() = kotlinx.coroutines.flow.flowOf(0)
+    override suspend fun activeMemories(): List<MemoryEntity> = emptyList()
+    override suspend fun pinned(): List<MemoryEntity> = emptyList()
+    override suspend fun byId(id: String): MemoryEntity? = null
+    override suspend fun upsert(memory: MemoryEntity) = Unit
+    override suspend fun update(memory: MemoryEntity) = Unit
+    override suspend fun markRecalled(ids: List<String>, at: Long) = Unit
+    override suspend fun delete(id: String) = Unit
+    override suspend fun deleteAll() = Unit
+}
+
+/** Records rather than posts, since there is no notification manager in a JVM test. */
+private class RecordingNotifier : Notifier {
+    val posted = mutableListOf<Pair<String, String>>()
+
+    override fun notify(
+        title: String,
+        body: String,
+        channel: Notifier.Channel,
+        conversationId: String?,
+    ): Boolean {
+        posted += title to body
+        return true
     }
 }

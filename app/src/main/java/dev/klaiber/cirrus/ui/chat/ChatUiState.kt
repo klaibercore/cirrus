@@ -20,6 +20,7 @@ data class ChatUiState(
     val errorBanner: String? = null,
     /** True until the API key exists; the composer is replaced by an onboarding prompt. */
     val needsApiKey: Boolean = false,
+    val search: ChatSearch = ChatSearch(),
 ) {
     val title: String get() = conversation?.title ?: Conversation.DEFAULT_TITLE
 
@@ -44,6 +45,34 @@ data class ChatUiState(
             (composerText.isNotBlank() || pendingAttachments.isNotEmpty())
 
     val isEmpty: Boolean get() = messages.isEmpty() && !isGenerating
+}
+
+/**
+ * Find-in-conversation.
+ *
+ * Matching is per message rather than per occurrence: the transcript scrolls by message, so a
+ * "next" that lands twice inside the same answer would look like it had done nothing. Every
+ * occurrence is still highlighted — only the jumping is coarse.
+ */
+data class ChatSearch(
+    val isActive: Boolean = false,
+    val query: String = "",
+    val matchIds: List<String> = emptyList(),
+    val currentIndex: Int = 0,
+) {
+    /** The query, but only once it is worth highlighting for. */
+    val highlight: String get() = if (isActive && query.isNotBlank()) query else ""
+
+    val currentId: String? get() = matchIds.getOrNull(currentIndex)
+
+    val hasMatches: Boolean get() = matchIds.isNotEmpty()
+
+    val label: String
+        get() = when {
+            query.isBlank() -> ""
+            matchIds.isEmpty() -> "No matches"
+            else -> "${currentIndex + 1}/${matchIds.size}"
+        }
 }
 
 /** One-shot effects that the screen consumes rather than rendering from state. */
