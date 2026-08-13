@@ -9,6 +9,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.2.0] - 2026-08-13
+
+### Added
+
+- **Maths is typeset, not approximated.** Formulas were flattened to Unicode, so `\frac{a}{b}`
+  arrived as `a/b`, a summation lost its limits and a matrix was hopeless. There is now a real
+  layout engine: fractions stack over a rule, scripts sit where scripts belong, delimiters and
+  radicals stretch to fit what is inside them, and matrices, `cases` and aligned environments come
+  out as matrices, cases and aligned environments. Spacing follows TeX's rules, so `a + b` is
+  looser than `ab` and `a = b` looser still — which is most of what separates maths from a row of
+  symbols. Display equations get their own line and scroll sideways when they are wider than the
+  screen; long-press copies the LaTeX.
+- **Answers can be selected.** Long-press any reply to select and copy part of it. Formulas copy
+  as readable text rather than as a gap, so a selected paragraph gives you `x²`, not a hole.
+- **Read aloud.** A speak button under finished replies. What gets spoken is not the raw markdown:
+  code blocks are announced rather than dictated, links read as "link", tables as heading-and-value
+  pairs, and maths as words — "the sum from i equals 1 to n, of x sub i".
+- **ElevenLabs voices, optionally.** Bring an API key and replies are read in a far better voice,
+  with the voice and model chosen in settings. Without a key it uses Android's own engine; there is
+  no state in which the button does nothing.
+- **Find in conversation.** Search the open thread from the overflow menu, with every match
+  highlighted and arrows to step between them.
+- **Memory across conversations.** Cirrus can write down something worth keeping and look it up
+  later, through tools it drives itself — deliberately on demand, so what it keeps is a short list
+  of durable facts rather than a summary of everything you have ever said. **Settings → Memory**
+  shows every line, and lets you edit, pin, retire or delete any of it. Pinned memories are sent
+  with every message; the rest have to be recalled.
+- **Overnight consolidation.** Once a night, on a charger, Cirrus reads the threads since the last
+  pass, writes down anything durable that was said in passing, merges memories that say the same
+  thing and retires what has been overtaken. Nothing is deleted — retired memories can be restored.
+- **Scheduled agents.** A prompt that runs on its own clock: a morning briefing, a Friday summary,
+  a nightly check on something. Each run writes into an ordinary conversation you can open, scroll,
+  branch from and reply to, and can notify you when it lands. **Settings → Agents**.
+- **A notification tool.** The model can put something on your notification shade when you asked to
+  be told about it — and a scheduled agent can reach you with what it found at 3am.
+
+### Changed
+
+- **Settings is a hub rather than a scroll.** Thirty controls in one column, ordered by when each
+  was written, became eight groups plus Memory and Agents. Nothing was removed.
+- **The launcher icon is just the cloud.**
+
+### Fixed
+
+- **Memory and notifications are no longer behind the tools switch.** That switch governs what
+  reaches off the phone — search, GitHub, MCP — and gating local, instant, free tools behind it
+  meant memory silently doing nothing in most conversations.
+- **The tools switch now actually stops a tool.** Only the schemas were gated, so a model that
+  named `web_search` anyway — from an earlier turn, or by guessing — would still have reached the
+  network with external tools switched off. Resolving a tool now applies the same gate that
+  decides which ones are offered.
+
 ## [1.1.0] - 2026-08-11
 
 ### Added
@@ -143,7 +195,9 @@ do things.
   or bridges its tools into the registry.
 - LaTeX is mapped to Unicode, not typeset. There is no layout, so fractions render as `a/b`.
 
-[Unreleased]: https://github.com/klaibercore/cirrus/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/klaibercore/cirrus/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/klaibercore/cirrus/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/klaibercore/cirrus/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/klaibercore/cirrus/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/klaibercore/cirrus/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/klaibercore/cirrus/releases/tag/v1.0.0
