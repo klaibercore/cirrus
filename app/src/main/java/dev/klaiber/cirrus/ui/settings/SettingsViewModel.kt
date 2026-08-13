@@ -7,7 +7,9 @@ import dev.klaiber.cirrus.BuildConfig
 import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsClient
 import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsVoice
+import dev.klaiber.cirrus.data.repository.AgentRepository
 import dev.klaiber.cirrus.data.repository.ConversationRepository
+import dev.klaiber.cirrus.data.repository.MemoryRepository
 import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
@@ -50,6 +52,8 @@ data class SettingsUiState(
     val mcpServerCount: Int = 0,
     /** Tools actually resolved from enabled servers, not the number configured. */
     val mcpToolCount: Int = 0,
+    val memoryCount: Int = 0,
+    val agentCount: Int = 0,
 )
 
 @HiltViewModel
@@ -58,6 +62,8 @@ class SettingsViewModel @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val modelRepository: ModelRepository,
     mcpServerRepository: McpServerRepository,
+    memoryRepository: MemoryRepository,
+    agentRepository: AgentRepository,
     private val client: OllamaClient,
     private val elevenLabs: ElevenLabsClient,
 ) : ViewModel() {
@@ -71,21 +77,39 @@ class SettingsViewModel @Inject constructor(
 
     private val connectionStatus = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Idle)
 
+    /** Grouped into two combines because `combine` tops out at five flows. */
+    private val mcpCounts = combine(
+        mcpServerRepository.servers,
+        mcpServerRepository.bindings,
+        memoryRepository.activeCount,
+        agentRepository.agents,
+    ) { servers, bindings, memories, agents ->
+        Counts(servers.size, bindings.size, memories, agents.size)
+    }
+
     val uiState: StateFlow<SettingsUiState> = combine(
         settingsRepository.settings,
         modelRepository.models,
         connectionStatus,
-        mcpServerRepository.servers,
-        mcpServerRepository.bindings,
-    ) { settings, models, status, mcpServers, mcpBindings ->
+        mcpCounts,
+    ) { settings, models, status, counts ->
         SettingsUiState(
             settings = settings,
             models = models,
             connectionStatus = status,
-            mcpServerCount = mcpServers.size,
-            mcpToolCount = mcpBindings.size,
+            mcpServerCount = counts.mcpServers,
+            mcpToolCount = counts.mcpTools,
+            memoryCount = counts.memories,
+            agentCount = counts.agents,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
+
+    private data class Counts(
+        val mcpServers: Int,
+        val mcpTools: Int,
+        val memories: Int,
+        val agents: Int,
+    )
 
     init {
         viewModelScope.launch { modelRepository.refreshIfEmpty() }

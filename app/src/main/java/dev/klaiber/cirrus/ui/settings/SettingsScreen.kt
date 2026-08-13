@@ -38,6 +38,8 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,20 +64,32 @@ import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsVoice
 import dev.klaiber.cirrus.domain.model.ElevenLabsModel
 import dev.klaiber.cirrus.domain.model.SpeechEngine
 import dev.klaiber.cirrus.domain.model.ThemeMode
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import dev.klaiber.cirrus.ui.components.SectionLabel
 import dev.klaiber.cirrus.ui.components.HelpBadge
 import dev.klaiber.cirrus.ui.components.HelpTooltip
 
+/**
+ * The settings hub.
+ *
+ * Eight groups and two destinations, instead of one scroll of thirty controls. The old screen was
+ * ordered by when each setting was written, so finding the context-window slider meant reading past
+ * the GitHub token. Grouping costs one tap and buys a screen you can scan — and it leaves an
+ * obvious place to put the next thing, which is how the old one got that long.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onOpenMcpServers: () -> Unit,
+    onOpenSection: (SettingsSection) -> Unit,
+    onOpenMemory: () -> Unit,
+    onOpenAgents: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val voices by viewModel.voices.collectAsStateWithLifecycle()
-    val voiceStatus by viewModel.voiceStatus.collectAsStateWithLifecycle()
-    var showDeleteDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -100,255 +114,50 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 16.dp)
                 .padding(bottom = 40.dp),
         ) {
-            SectionHeader("Connection")
-            ApiKeyField(
+            ConnectionSummary(
                 hasKey = state.settings.hasApiKey,
-                status = state.connectionStatus,
-                onSave = viewModel::saveApiKey,
-                onClear = viewModel::clearApiKey,
-                onTest = viewModel::testConnection,
+                host = state.settings.baseUrl,
+                model = state.settings.defaultModel,
+                onClick = { onOpenSection(SettingsSection.CONNECTION) },
             )
 
-            Spacer(Modifier.height(12.dp))
-            BaseUrlField(
-                baseUrl = state.settings.baseUrl,
-                onSave = viewModel::setBaseUrl,
-            )
-
-            SectionHeader("Defaults")
-            ModelDropdownRow(
-                selected = state.settings.defaultModel,
-                models = state.models.map { it.name },
-                onSelect = viewModel::setDefaultModel,
-            )
-            SwitchRow(
-                title = "Web tools by default",
-                subtitle = "Enable web search and page fetch for new conversations",
-                help = "Lets the model run web searches and fetch pages mid-answer. It decides " +
-                    "when to call them, and each call is an extra round trip to your host. You " +
-                    "can still flip this per conversation from the composer.",
-                checked = state.settings.toolsEnabledByDefault,
-                onCheckedChange = viewModel::setToolsDefault,
-            )
-            SwitchRow(
-                title = "Auto-title conversations",
-                subtitle = "Name threads from their content, and keep the name current",
-                help = "Cirrus names a new thread from its first exchange, then re-summarises " +
-                    "it as the conversation grows — at most once every 30 minutes, so a long " +
-                    "session costs a handful of short requests rather than one per turn. " +
-                    "Rename a thread yourself and it is never overwritten.",
-                checked = state.settings.autoTitleConversations,
-                onCheckedChange = viewModel::setAutoTitle,
-            )
-            SwitchRow(
-                title = "Send on enter",
-                subtitle = "Otherwise enter inserts a newline and you tap send",
-                help = "Turns the keyboard's return key into send. Handy for short back-and-forth " +
-                    "chats, awkward when you write multi-line prompts.",
-                checked = state.settings.sendOnEnter,
-                onCheckedChange = viewModel::setSendOnEnter,
-            )
-            StepperRow(
-                title = "Context messages",
-                subtitle = if (state.settings.contextMessageLimit == 0) {
-                    "Sending the full thread every turn"
-                } else {
-                    "Sending the last ${state.settings.contextMessageLimit} messages"
-                },
-                help = "How much of the thread is replayed with every turn. A smaller number " +
-                    "means cheaper, faster requests but a shorter memory: the model literally " +
-                    "cannot see what fell outside the window. \"All\" sends everything and lets " +
-                    "the model's own context window do the truncating.",
-                value = state.settings.contextMessageLimit.toFloat(),
-                range = 0f..100f,
-                steps = 19,
-                format = { if (it.toInt() == 0) "all" else it.toInt().toString() },
-                onChange = { viewModel.setContextMessageLimit(it.toInt()) },
-            )
-
-            SectionHeader("GitHub")
-            GitHubTokenField(
-                hasToken = state.settings.hasGitHubToken,
-                onSave = viewModel::saveGitHubToken,
-                onClear = viewModel::clearGitHubToken,
-            )
-            SwitchRow(
-                title = "GitHub tools",
-                subtitle = "Let the model read your repositories, issues and pull requests",
-                help = "Adds tools the model can call mid-answer: list repositories, search " +
-                    "code, read files, and read issues and pull requests — private ones " +
-                    "included, as far as your token reaches. Requests go to api.github.com and " +
-                    "nowhere else, and your Ollama key is never sent there.",
-                checked = state.settings.gitHubToolsEnabled,
-                onCheckedChange = viewModel::setGitHubToolsEnabled,
-                enabled = state.settings.hasGitHubToken,
-            )
-            SwitchRow(
-                title = "Allow write actions",
-                subtitle = "Opening issues, commenting, posting reviews, committing files",
-                help = "Off by default, and worth leaving off. Reading is recoverable; opening " +
-                    "an issue or approving a pull request is public and decided by a model " +
-                    "rather than by you. With this off, the write tools are not even offered, " +
-                    "so the model cannot try.",
-                checked = state.settings.gitHubWritesAllowed,
-                onCheckedChange = viewModel::setGitHubWritesAllowed,
-                enabled = state.settings.hasGitHubToken && state.settings.gitHubToolsEnabled,
-            )
-
-            SectionHeader("Voice")
-            SwitchRow(
-                title = "Voice input",
-                subtitle = "Show a microphone in the composer",
-                help = "Dictate instead of typing. Android's speech recogniser transcribes what " +
-                    "you say straight into the message box, where you can edit it before " +
-                    "sending. Ollama's chat API carries no audio field, so what reaches the " +
-                    "model is the transcript, not the recording.",
-                checked = state.settings.voiceInputEnabled,
-                onCheckedChange = viewModel::setVoiceInputEnabled,
-            )
-            SwitchRow(
-                title = "Keep dictation on device",
-                subtitle = "Use the offline recogniser when one is installed",
-                help = "Prefers Android's on-device recogniser, so your voice never leaves the " +
-                    "phone. If the device has no offline model for your language, Cirrus falls " +
-                    "back to the network recogniser. Needs Android 13 or newer.",
-                checked = state.settings.preferOnDeviceRecognition,
-                onCheckedChange = viewModel::setPreferOnDeviceRecognition,
-                enabled = state.settings.voiceInputEnabled,
-            )
-            SwitchRow(
-                title = "Read answers aloud",
-                subtitle = "Show a speak button under finished replies",
-                help = "Adds a control that reads a reply out. What gets spoken is not the raw " +
-                    "markdown: code blocks are announced rather than dictated, links are read as " +
-                    "\"link\", tables are read as heading-and-value pairs, and maths is spoken as " +
-                    "words — x squared, not x two.",
-                checked = state.settings.readAloudEnabled,
-                onCheckedChange = viewModel::setReadAloudEnabled,
-            )
-            if (state.settings.readAloudEnabled) {
-                SpeechEngineSelector(
-                    selected = state.settings.speechEngine,
-                    onSelect = viewModel::setSpeechEngine,
+            SectionLabel("What Cirrus knows")
+            HubCard {
+                HubRow(
+                    icon = SettingsDestination.MEMORY.icon,
+                    title = SettingsDestination.MEMORY.title,
+                    summary = if (state.memoryCount > 0) {
+                        "${state.memoryCount} remembered"
+                    } else {
+                        SettingsDestination.MEMORY.summary
+                    },
+                    onClick = onOpenMemory,
                 )
-                if (state.settings.speechEngine == SpeechEngine.ELEVENLABS) {
-                    ElevenLabsKeyField(
-                        hasKey = state.settings.hasElevenLabsKey,
-                        onSave = viewModel::saveElevenLabsKey,
-                        onClear = viewModel::clearElevenLabsKey,
-                    )
-                    if (state.settings.hasElevenLabsKey) {
-                        VoicePicker(
-                            selectedName = state.settings.elevenLabsVoiceName,
-                            voices = voices,
-                            status = voiceStatus,
-                            onLoad = viewModel::loadVoices,
-                            onSelect = viewModel::setElevenLabsVoice,
-                        )
-                        ElevenLabsModelPicker(
-                            selected = ElevenLabsModel.fromId(state.settings.elevenLabsModelId),
-                            onSelect = viewModel::setElevenLabsModel,
-                        )
-                    }
-                }
+                HubDivider()
+                HubRow(
+                    icon = SettingsDestination.AGENTS.icon,
+                    title = SettingsDestination.AGENTS.title,
+                    summary = if (state.agentCount > 0) {
+                        "${state.agentCount} scheduled"
+                    } else {
+                        SettingsDestination.AGENTS.summary
+                    },
+                    onClick = onOpenAgents,
+                )
             }
 
-            SectionHeader("Appearance")
-            ThemeSelector(
-                selected = state.settings.themeMode,
-                onSelect = viewModel::setThemeMode,
-            )
-            SwitchRow(
-                title = "Dynamic color",
-                subtitle = "Follow the system wallpaper palette on Android 12+",
-                help = "Recolours Cirrus from your wallpaper's palette. Off uses the app's own " +
-                    "colours, which stay the same whatever your home screen looks like.",
-                checked = state.settings.useDynamicColor,
-                onCheckedChange = viewModel::setDynamicColor,
-            )
-            SwitchRow(
-                title = "Render markdown",
-                subtitle = "Turn off to read raw model output verbatim",
-                help = "Formats replies: headings, lists, tables, and syntax-highlighted code " +
-                    "blocks. Off shows exactly the characters the model produced, asterisks and " +
-                    "backticks included — useful when you are debugging a prompt's formatting.",
-                checked = state.settings.renderMarkdown,
-                onCheckedChange = viewModel::setRenderMarkdown,
-            )
-
-            SectionHeader("Diagnostics")
-            SwitchRow(
-                title = "Show generation stats",
-                subtitle = "Tokens per second, token counts and latency under each reply",
-                help = "Adds a line under each reply with output speed, prompt and response " +
-                    "token counts, and time to the first token. The numbers come from the " +
-                    "server's own timings, so they measure the host, not your connection.",
-                checked = state.settings.showStats,
-                onCheckedChange = viewModel::setShowStats,
-            )
-            SwitchRow(
-                title = "Developer mode",
-                subtitle = "Capture and display the exact request JSON for every turn",
-                help = "Stores the exact JSON body sent for each turn and shows it under the " +
-                    "reply — system prompt, context window, options and tool definitions " +
-                    "included. Nothing extra is sent; it only records what already went out.",
-                checked = state.settings.developerMode,
-                onCheckedChange = viewModel::setDeveloperMode,
-            )
-
-            SectionHeader("Tools")
-            StepperRow(
-                title = "Search results",
-                subtitle = "How many results web_search returns per call",
-                help = "More results give the model more to work with, but each one is pasted " +
-                    "into the conversation and eats context the model could be using to think.",
-                value = state.settings.webSearchMaxResults.toFloat(),
-                range = 1f..10f,
-                steps = 8,
-                format = { it.toInt().toString() },
-                onChange = { viewModel.setWebSearchMaxResults(it.toInt()) },
-            )
-            StepperRow(
-                title = "Max tool rounds",
-                subtitle = "Upper bound on back-and-forth tool calls in one turn",
-                help = "A model can search, read the results, then search again. This caps how " +
-                    "many of those rounds one turn may take before Cirrus stops the loop, so a " +
-                    "model that keeps searching forever cannot run up your bill.",
-                value = state.settings.maxToolIterations.toFloat(),
-                range = 1f..20f,
-                steps = 18,
-                format = { it.toInt().toString() },
-                onChange = { viewModel.setMaxToolIterations(it.toInt()) },
-            )
-            NavigationRow(
-                title = "MCP servers",
-                subtitle = mcpSubtitle(state.mcpServerCount, state.mcpToolCount),
-                help = "Attach a Model Context Protocol server and its tools become available " +
-                    "to the model alongside Cirrus's own. Each server is reached and asked what " +
-                    "it offers before it is saved, and its token is only ever sent to it.",
-                onClick = onOpenMcpServers,
-            )
-
-            SectionHeader("Data")
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showDeleteDialog = true }
-                    .padding(vertical = 14.dp),
-            ) {
-                Column {
-                    Text(
-                        text = "Delete all conversations",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    Text(
-                        text = "Everything is stored on this device only",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            SectionLabel("Settings")
+            HubCard {
+                SettingsSection.entries.forEachIndexed { index, section ->
+                    if (index > 0) HubDivider()
+                    HubRow(
+                        icon = section.icon,
+                        title = section.title,
+                        summary = section.summary,
+                        onClick = { onOpenSection(section) },
                     )
                 }
             }
@@ -358,7 +167,454 @@ fun SettingsScreen(
                 text = "Cirrus ${state.versionName}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
             )
+        }
+    }
+}
+
+/** The one thing worth showing without a tap: whether Cirrus can reach a model at all. */
+@Composable
+private fun ConnectionSummary(hasKey: Boolean, host: String, model: String, onClick: () -> Unit) {
+    val connected = hasKey || !host.contains("ollama.com")
+    val container = if (connected) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        MaterialTheme.colorScheme.errorContainer
+    }
+    val onContainer = if (connected) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.onErrorContainer
+    }
+
+    Surface(
+        color = container,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick),
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = if (connected) {
+                    Icons.Outlined.CheckCircle
+                } else {
+                    Icons.Outlined.ErrorOutline
+                },
+                contentDescription = null,
+                tint = onContainer,
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = if (connected) "Connected" else "No API key yet",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = onContainer,
+                )
+                Text(
+                    text = buildString {
+                        append(host.removePrefix("https://").removePrefix("http://"))
+                        if (model.isNotBlank()) append(" · ").append(model)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = onContainer,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = onContainer,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HubCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(content = content)
+    }
+}
+
+@Composable
+private fun HubDivider() {
+    HorizontalDivider(
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+        modifier = Modifier.padding(start = 56.dp),
+    )
+}
+
+@Composable
+private fun HubRow(icon: ImageVector, title: String, summary: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(18.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+/**
+ * One group of controls, on its own screen.
+ *
+ * Every control here is the one that was already there; only where it lives has changed.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsSectionScreen(
+    section: SettingsSection,
+    onBack: () -> Unit,
+    onOpenMcpServers: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val voices by viewModel.voices.collectAsStateWithLifecycle()
+    val voiceStatus by viewModel.voiceStatus.collectAsStateWithLifecycle()
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(section.title) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 40.dp),
+        ) {
+            when (section) {
+                SettingsSection.CONNECTION -> {
+
+                ApiKeyField(
+                    hasKey = state.settings.hasApiKey,
+                    status = state.connectionStatus,
+                    onSave = viewModel::saveApiKey,
+                    onClear = viewModel::clearApiKey,
+                    onTest = viewModel::testConnection,
+                )
+
+                Spacer(Modifier.height(12.dp))
+                BaseUrlField(
+                    baseUrl = state.settings.baseUrl,
+                    onSave = viewModel::setBaseUrl,
+                )
+
+            
+                }
+
+                SettingsSection.GENERATION -> {
+
+                ModelDropdownRow(
+                    selected = state.settings.defaultModel,
+                    models = state.models.map { it.name },
+                    onSelect = viewModel::setDefaultModel,
+                )
+                SwitchRow(
+                    title = "Web tools by default",
+                    subtitle = "Enable web search and page fetch for new conversations",
+                    help = "Lets the model run web searches and fetch pages mid-answer. It decides " +
+                        "when to call them, and each call is an extra round trip to your host. You " +
+                        "can still flip this per conversation from the composer.",
+                    checked = state.settings.toolsEnabledByDefault,
+                    onCheckedChange = viewModel::setToolsDefault,
+                )
+                SwitchRow(
+                    title = "Auto-title conversations",
+                    subtitle = "Name threads from their content, and keep the name current",
+                    help = "Cirrus names a new thread from its first exchange, then re-summarises " +
+                        "it as the conversation grows — at most once every 30 minutes, so a long " +
+                        "session costs a handful of short requests rather than one per turn. " +
+                        "Rename a thread yourself and it is never overwritten.",
+                    checked = state.settings.autoTitleConversations,
+                    onCheckedChange = viewModel::setAutoTitle,
+                )
+                SwitchRow(
+                    title = "Send on enter",
+                    subtitle = "Otherwise enter inserts a newline and you tap send",
+                    help = "Turns the keyboard's return key into send. Handy for short back-and-forth " +
+                        "chats, awkward when you write multi-line prompts.",
+                    checked = state.settings.sendOnEnter,
+                    onCheckedChange = viewModel::setSendOnEnter,
+                )
+                StepperRow(
+                    title = "Context messages",
+                    subtitle = if (state.settings.contextMessageLimit == 0) {
+                        "Sending the full thread every turn"
+                    } else {
+                        "Sending the last ${state.settings.contextMessageLimit} messages"
+                    },
+                    help = "How much of the thread is replayed with every turn. A smaller number " +
+                        "means cheaper, faster requests but a shorter memory: the model literally " +
+                        "cannot see what fell outside the window. \"All\" sends everything and lets " +
+                        "the model's own context window do the truncating.",
+                    value = state.settings.contextMessageLimit.toFloat(),
+                    range = 0f..100f,
+                    steps = 19,
+                    format = { if (it.toInt() == 0) "all" else it.toInt().toString() },
+                    onChange = { viewModel.setContextMessageLimit(it.toInt()) },
+                )
+
+            
+                }
+
+                SettingsSection.INTEGRATIONS -> {
+
+                GitHubTokenField(
+                    hasToken = state.settings.hasGitHubToken,
+                    onSave = viewModel::saveGitHubToken,
+                    onClear = viewModel::clearGitHubToken,
+                )
+                SwitchRow(
+                    title = "GitHub tools",
+                    subtitle = "Let the model read your repositories, issues and pull requests",
+                    help = "Adds tools the model can call mid-answer: list repositories, search " +
+                        "code, read files, and read issues and pull requests — private ones " +
+                        "included, as far as your token reaches. Requests go to api.github.com and " +
+                        "nowhere else, and your Ollama key is never sent there.",
+                    checked = state.settings.gitHubToolsEnabled,
+                    onCheckedChange = viewModel::setGitHubToolsEnabled,
+                    enabled = state.settings.hasGitHubToken,
+                )
+                SwitchRow(
+                    title = "Allow write actions",
+                    subtitle = "Opening issues, commenting, posting reviews, committing files",
+                    help = "Off by default, and worth leaving off. Reading is recoverable; opening " +
+                        "an issue or approving a pull request is public and decided by a model " +
+                        "rather than by you. With this off, the write tools are not even offered, " +
+                        "so the model cannot try.",
+                    checked = state.settings.gitHubWritesAllowed,
+                    onCheckedChange = viewModel::setGitHubWritesAllowed,
+                    enabled = state.settings.hasGitHubToken && state.settings.gitHubToolsEnabled,
+                )
+
+            
+
+                NavigationRow(
+                    title = "MCP servers",
+                    subtitle = mcpSubtitle(state.mcpServerCount, state.mcpToolCount),
+                    help = "Attach a Model Context Protocol server and its tools become available " +
+                        "to the model alongside Cirrus's own. Each server is reached and asked what " +
+                        "it offers before it is saved, and its token is only ever sent to it.",
+                    onClick = onOpenMcpServers,
+                )
+
+            
+                }
+
+                SettingsSection.VOICE -> {
+
+                SwitchRow(
+                    title = "Voice input",
+                    subtitle = "Show a microphone in the composer",
+                    help = "Dictate instead of typing. Android's speech recogniser transcribes what " +
+                        "you say straight into the message box, where you can edit it before " +
+                        "sending. Ollama's chat API carries no audio field, so what reaches the " +
+                        "model is the transcript, not the recording.",
+                    checked = state.settings.voiceInputEnabled,
+                    onCheckedChange = viewModel::setVoiceInputEnabled,
+                )
+                SwitchRow(
+                    title = "Keep dictation on device",
+                    subtitle = "Use the offline recogniser when one is installed",
+                    help = "Prefers Android's on-device recogniser, so your voice never leaves the " +
+                        "phone. If the device has no offline model for your language, Cirrus falls " +
+                        "back to the network recogniser. Needs Android 13 or newer.",
+                    checked = state.settings.preferOnDeviceRecognition,
+                    onCheckedChange = viewModel::setPreferOnDeviceRecognition,
+                    enabled = state.settings.voiceInputEnabled,
+                )
+                SwitchRow(
+                    title = "Read answers aloud",
+                    subtitle = "Show a speak button under finished replies",
+                    help = "Adds a control that reads a reply out. What gets spoken is not the raw " +
+                        "markdown: code blocks are announced rather than dictated, links are read as " +
+                        "\"link\", tables are read as heading-and-value pairs, and maths is spoken as " +
+                        "words — x squared, not x two.",
+                    checked = state.settings.readAloudEnabled,
+                    onCheckedChange = viewModel::setReadAloudEnabled,
+                )
+                if (state.settings.readAloudEnabled) {
+                    SpeechEngineSelector(
+                        selected = state.settings.speechEngine,
+                        onSelect = viewModel::setSpeechEngine,
+                    )
+                    if (state.settings.speechEngine == SpeechEngine.ELEVENLABS) {
+                        ElevenLabsKeyField(
+                            hasKey = state.settings.hasElevenLabsKey,
+                            onSave = viewModel::saveElevenLabsKey,
+                            onClear = viewModel::clearElevenLabsKey,
+                        )
+                        if (state.settings.hasElevenLabsKey) {
+                            VoicePicker(
+                                selectedName = state.settings.elevenLabsVoiceName,
+                                voices = voices,
+                                status = voiceStatus,
+                                onLoad = viewModel::loadVoices,
+                                onSelect = viewModel::setElevenLabsVoice,
+                            )
+                            ElevenLabsModelPicker(
+                                selected = ElevenLabsModel.fromId(state.settings.elevenLabsModelId),
+                                onSelect = viewModel::setElevenLabsModel,
+                            )
+                        }
+                    }
+                }
+
+            
+                }
+
+                SettingsSection.APPEARANCE -> {
+
+                ThemeSelector(
+                    selected = state.settings.themeMode,
+                    onSelect = viewModel::setThemeMode,
+                )
+                SwitchRow(
+                    title = "Dynamic color",
+                    subtitle = "Follow the system wallpaper palette on Android 12+",
+                    help = "Recolours Cirrus from your wallpaper's palette. Off uses the app's own " +
+                        "colours, which stay the same whatever your home screen looks like.",
+                    checked = state.settings.useDynamicColor,
+                    onCheckedChange = viewModel::setDynamicColor,
+                )
+                SwitchRow(
+                    title = "Render markdown",
+                    subtitle = "Turn off to read raw model output verbatim",
+                    help = "Formats replies: headings, lists, tables, and syntax-highlighted code " +
+                        "blocks. Off shows exactly the characters the model produced, asterisks and " +
+                        "backticks included — useful when you are debugging a prompt's formatting.",
+                    checked = state.settings.renderMarkdown,
+                    onCheckedChange = viewModel::setRenderMarkdown,
+                )
+
+            
+                }
+
+                SettingsSection.DIAGNOSTICS -> {
+
+                SwitchRow(
+                    title = "Show generation stats",
+                    subtitle = "Tokens per second, token counts and latency under each reply",
+                    help = "Adds a line under each reply with output speed, prompt and response " +
+                        "token counts, and time to the first token. The numbers come from the " +
+                        "server's own timings, so they measure the host, not your connection.",
+                    checked = state.settings.showStats,
+                    onCheckedChange = viewModel::setShowStats,
+                )
+                SwitchRow(
+                    title = "Developer mode",
+                    subtitle = "Capture and display the exact request JSON for every turn",
+                    help = "Stores the exact JSON body sent for each turn and shows it under the " +
+                        "reply — system prompt, context window, options and tool definitions " +
+                        "included. Nothing extra is sent; it only records what already went out.",
+                    checked = state.settings.developerMode,
+                    onCheckedChange = viewModel::setDeveloperMode,
+                )
+
+            
+                }
+
+                SettingsSection.TOOLS -> {
+
+                StepperRow(
+                    title = "Search results",
+                    subtitle = "How many results web_search returns per call",
+                    help = "More results give the model more to work with, but each one is pasted " +
+                        "into the conversation and eats context the model could be using to think.",
+                    value = state.settings.webSearchMaxResults.toFloat(),
+                    range = 1f..10f,
+                    steps = 8,
+                    format = { it.toInt().toString() },
+                    onChange = { viewModel.setWebSearchMaxResults(it.toInt()) },
+                )
+                StepperRow(
+                    title = "Max tool rounds",
+                    subtitle = "Upper bound on back-and-forth tool calls in one turn",
+                    help = "A model can search, read the results, then search again. This caps how " +
+                        "many of those rounds one turn may take before Cirrus stops the loop, so a " +
+                        "model that keeps searching forever cannot run up your bill.",
+                    value = state.settings.maxToolIterations.toFloat(),
+                    range = 1f..20f,
+                    steps = 18,
+                    format = { it.toInt().toString() },
+                    onChange = { viewModel.setMaxToolIterations(it.toInt()) },
+                )
+                }
+
+                SettingsSection.DATA -> {
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDeleteDialog = true }
+                        .padding(vertical = 14.dp),
+                ) {
+                    Column {
+                        Text(
+                            text = "Delete all conversations",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Text(
+                            text = "Everything is stored on this device only",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                }
+            }
         }
     }
 

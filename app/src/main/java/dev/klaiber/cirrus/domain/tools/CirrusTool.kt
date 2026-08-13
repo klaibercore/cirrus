@@ -169,6 +169,8 @@ class ToolRegistry @Inject constructor(
     webSearchTool: WebSearchTool,
     webFetchTool: WebFetchTool,
     private val gitHubTools: GitHubToolSet,
+    private val memoryTools: MemoryToolSet,
+    private val notificationTool: SendNotificationTool,
     private val mcpTools: McpToolSet,
     private val settingsRepository: SettingsRepository,
     private val gitHubCredentials: GitHubCredentials,
@@ -177,30 +179,69 @@ class ToolRegistry @Inject constructor(
 
     /** Tools that exist for the life of the process; MCP tools come and go, so are resolved live. */
     private val staticTools: Map<String, CirrusTool> =
-        (webTools + gitHubTools.all).associateBy { it.name }
-
-    val definitions: List<JsonElement>
-        get() = buildList {
-            addAll(webTools.map { it.definition })
-            if (gitHubEnabled) {
-                val writesAllowed = gitHubCredentials.writesAllowed
-                gitHubTools.all
-                    .filter { writesAllowed || it !in gitHubTools.writeTools }
-                    .forEach { add(it.definition) }
-            }
-            // Only servers whose tools have actually been listed contribute here, so one that is
-            // switched off or unreachable is silently absent rather than offered and broken.
-            addAll(mcpTools.all.map { it.definition })
-        }
+        (webTools + gitHubTools.all + memoryTools.all + notificationTool).associateBy { it.name }
 
     /**
-     * Built-ins win ties.
+     * What to offer the model this turn.
      *
-     * [McpTool.qualifiedName] namespaces every MCP tool, so a collision means a server picked a
-     * name that looks namespaced. Resolving to the built-in is the safe way to break it: a remote
-     * server must not be able to take over `web_search` by naming a tool after it.
+     * [externalTools] is the conversation's own tools switch, and it only governs the tools that
+     * reach outside the phone: search, GitHub, MCP. Memory and notifications are not on that
+     * switch. They are local, free and instant, and the switch exists to control latency, cost and
+     * what leaves the device — none of which they spend. Gating memory behind it would mean
+     * cross-session memory silently not working in most conversations, which is indistinguishable
+     * from it being broken.
      */
-    fun find(name: String): CirrusTool? = staticTools[name] ?: mcpTools.find(name)
+    fun definitions(externalTools: Boolean): List<JsonElement> = buildList {
+        val settings = settingsRepository.current.value
+
+        // Offered as a set: recall with nothing to find is a wasted round trip, and remember with
+        // no way to correct it is worse than not remembering at all.
+        if (settings.memoryEnabled) {
+            addAll(memoryTools.all.map { it.definition })
+        }
+        if (settings.notificationToolEnabled) {
+            add(notificationTool.definition)
+        }
+
+        if (!externalTools) return@buildList
+
+        addAll(webTools.map { it.definition })
+        if (gitHubEnabled) {
+            val writesAllowed = gitHubCredentials.writesAllowed
+            gitHubTools.all
+                .filter { writesAllowed || it !in gitHubTools.writeTools }
+                .forEach { add(it.definition) }
+        }
+        // Only servers whose tools have actually been listed contribute here, so one that is
+        // switched off or unreachable is silently absent rather than offered and broken.
+        addAll(mcpTools.all.map { it.definition })
+    }
+
+    /**
+     * Resolves a tool the model asked for, or null if it may not run.
+     *
+     * [externalTools] is checked here and not only when the schemas are built, because "was it
+     * offered?" and "may it run?" have to be the same question. A model that has seen `web_search`
+     * in an earlier turn — or simply guesses the name — must not be able to reach the network
+     * after the user switched external tools off. Being told the tool is unknown is the right
+     * answer: it is unknown, this turn.
+     *
+     * Built-ins win ties. [McpTool.qualifiedName] namespaces every MCP tool, so a collision means a
+     * server picked a name that looks namespaced, and resolving to the built-in is the safe way to
+     * break it: a remote server must not take over `web_search` by naming a tool after it.
+     */
+    fun find(name: String, externalTools: Boolean = true): CirrusTool? {
+        val settings = settingsRepository.current.value
+
+        memoryTools.all.firstOrNull { it.name == name }
+            ?.let { return it.takeIf { settings.memoryEnabled } }
+        if (name == notificationTool.name) {
+            return notificationTool.takeIf { settings.notificationToolEnabled }
+        }
+
+        if (!externalTools) return null
+        return staticTools[name] ?: mcpTools.find(name)
+    }
 
     private val gitHubEnabled: Boolean
         get() = settingsRepository.current.value.gitHubToolsEnabled &&

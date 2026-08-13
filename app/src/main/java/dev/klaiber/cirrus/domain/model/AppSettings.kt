@@ -58,4 +58,13 @@ data class AppSettings(
     val elevenLabsVoiceId: String = "",
     val elevenLabsVoiceName: String = "",
     val elevenLabsModelId: String = ElevenLabsModel.Default.id,
+    /** Offers the remember/recall/forget tools, and sends pinned memories with every turn. */
+    val memoryEnabled: Boolean = true,
+    /** Lets a model put something on the notification shade. */
+    val notificationToolEnabled: Boolean = true,
+    /** Runs the nightly pass that merges duplicate memories and retires stale ones. */
+    val memoryConsolidationEnabled: Boolean = true,
+    /** Local hour at which that pass runs. Late enough to be asleep, early enough to be charged. */
+    val memoryConsolidationHour: Int = 3,
+    val lastConsolidationAt: Long = 0L,
 )

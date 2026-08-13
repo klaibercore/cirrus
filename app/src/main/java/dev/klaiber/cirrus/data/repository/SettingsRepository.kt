@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import dev.klaiber.cirrus.data.prefs.SecretCipher
 import dev.klaiber.cirrus.data.remote.ApiCredentials
@@ -181,6 +182,22 @@ class SettingsRepository @Inject constructor(
         it[Keys.ELEVENLABS_MODEL] = model.id
     }
 
+    suspend fun setMemoryEnabled(enabled: Boolean) = edit { it[Keys.MEMORY_ENABLED] = enabled }
+
+    suspend fun setNotificationToolEnabled(enabled: Boolean) = edit {
+        it[Keys.NOTIFICATION_TOOL] = enabled
+    }
+
+    suspend fun setMemoryConsolidationEnabled(enabled: Boolean) = edit {
+        it[Keys.CONSOLIDATION_ENABLED] = enabled
+    }
+
+    suspend fun setMemoryConsolidationHour(hour: Int) = edit {
+        it[Keys.CONSOLIDATION_HOUR] = hour.coerceIn(0, 23)
+    }
+
+    suspend fun setLastConsolidationAt(at: Long) = edit { it[Keys.LAST_CONSOLIDATION] = at }
+
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         dataStore.edit(block)
     }
@@ -218,6 +235,11 @@ class SettingsRepository @Inject constructor(
         elevenLabsVoiceId = this[Keys.ELEVENLABS_VOICE] ?: "",
         elevenLabsVoiceName = this[Keys.ELEVENLABS_VOICE_NAME] ?: "",
         elevenLabsModelId = this[Keys.ELEVENLABS_MODEL] ?: ElevenLabsModel.Default.id,
+        memoryEnabled = this[Keys.MEMORY_ENABLED] ?: true,
+        notificationToolEnabled = this[Keys.NOTIFICATION_TOOL] ?: true,
+        memoryConsolidationEnabled = this[Keys.CONSOLIDATION_ENABLED] ?: true,
+        memoryConsolidationHour = this[Keys.CONSOLIDATION_HOUR] ?: 3,
+        lastConsolidationAt = this[Keys.LAST_CONSOLIDATION] ?: 0L,
     )
 
     private object Keys {
@@ -247,5 +269,10 @@ class SettingsRepository @Inject constructor(
         val ELEVENLABS_VOICE = stringPreferencesKey("elevenlabs_voice")
         val ELEVENLABS_VOICE_NAME = stringPreferencesKey("elevenlabs_voice_name")
         val ELEVENLABS_MODEL = stringPreferencesKey("elevenlabs_model")
+        val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
+        val NOTIFICATION_TOOL = booleanPreferencesKey("notification_tool")
+        val CONSOLIDATION_ENABLED = booleanPreferencesKey("consolidation_enabled")
+        val CONSOLIDATION_HOUR = intPreferencesKey("consolidation_hour")
+        val LAST_CONSOLIDATION = longPreferencesKey("last_consolidation")
     }
 }

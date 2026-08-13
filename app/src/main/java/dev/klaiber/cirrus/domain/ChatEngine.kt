@@ -66,22 +66,31 @@ class ChatEngine @Inject constructor(
         conversation: Conversation,
         history: List<ChatMessage>,
         settings: AppSettings,
+        /**
+         * What is already known about the user, from memories pinned in the store. Passed in
+         * rather than fetched: this class stays free of persistence so the turn protocol can be
+         * tested against a mock server with nothing behind it.
+         */
+        memoryBrief: String? = null,
     ): Flow<TurnEvent> = flow {
-        val wireMessages = buildWireMessages(conversation, history, settings).toMutableList()
+        val wireMessages = buildWireMessages(conversation, history, settings, memoryBrief)
+            .toMutableList()
         val clock = TurnClock()
         var toolRounds = 0
         var wrapUpUsed = false
 
         while (true) {
             // Once the budget is spent the tools are withheld rather than the turn abandoned, so
-            // the model's last word is an answer instead of a tool call nobody ran.
-            val offerTools = conversation.toolsEnabled && toolRounds < settings.maxToolIterations
+            // the model's last word is an answer instead of a tool call nobody ran. The
+            // conversation's switch governs the tools that reach outside the phone; memory and
+            // notifications are offered either way.
+            val offerTools = toolRounds < settings.maxToolIterations
             val request = buildRequest(conversation, wireMessages, settings, offerTools)
             emit(TurnEvent.RequestPrepared(client.encodeRequest(request)))
 
             val round = streamRound(request, clock)
 
-            if (round.toolCalls.isEmpty() || !conversation.toolsEnabled) {
+            if (round.toolCalls.isEmpty()) {
                 emit(TurnEvent.Finished(round.stats))
                 return@flow
             }
@@ -120,7 +129,7 @@ class ChatEngine @Inject constructor(
                 emit(TurnEvent.ToolStarted(invocation))
 
                 val startedAt = System.currentTimeMillis()
-                val tool = toolRegistry.find(call.function.name)
+                val tool = toolRegistry.find(call.function.name, conversation.toolsEnabled)
                 val outcome = if (tool == null) {
                     invocation.copy(
                         errorMessage = "Unknown tool: ${call.function.name}",
@@ -331,7 +340,12 @@ class ChatEngine @Inject constructor(
             messages = messages,
             stream = true,
             think = params.thinkMode.toJsonElement(),
-            tools = if (offerTools) toolRegistry.definitions else null,
+            tools = if (offerTools) {
+                toolRegistry.definitions(externalTools = conversation.toolsEnabled)
+                    .takeIf { it.isNotEmpty() }
+            } else {
+                null
+            },
             format = params.responseFormat?.let(::parseFormat),
             options = buildOptions(params),
             keepAlive = params.keepAlive,
@@ -343,6 +357,7 @@ class ChatEngine @Inject constructor(
         conversation: Conversation,
         history: List<ChatMessage>,
         settings: AppSettings,
+        memoryBrief: String?,
     ): List<MessageDto> {
         val relevant = history.filter { it.role != Role.SYSTEM && it.errorMessage == null }
         val windowed = if (settings.contextMessageLimit > 0) {
@@ -351,9 +366,16 @@ class ChatEngine @Inject constructor(
             relevant
         }
 
+        // One system message rather than two: plenty of chat templates only honour the first, and
+        // a memory brief that silently vanishes is worse than one that was never sent.
+        val system = listOfNotNull(
+            conversation.systemPrompt?.takeIf { it.isNotBlank() },
+            memoryBrief?.takeIf { it.isNotBlank() },
+        ).joinToString("\n\n")
+
         return buildList {
-            conversation.systemPrompt?.takeIf { it.isNotBlank() }?.let { prompt ->
-                add(MessageDto(role = Role.SYSTEM.wire, content = prompt))
+            if (system.isNotBlank()) {
+                add(MessageDto(role = Role.SYSTEM.wire, content = system))
             }
             windowed.forEach { message ->
                 add(

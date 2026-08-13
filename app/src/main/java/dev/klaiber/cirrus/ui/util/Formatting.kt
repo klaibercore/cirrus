@@ -56,3 +56,25 @@ fun formatBytes(bytes: Long): String = when {
     bytes >= 1_000 -> "%.0f KB".format(bytes / 1_000.0)
     else -> "$bytes B"
 }
+
+/**
+ * How long ago, in the shortest form that is still honest.
+ *
+ * Deliberately coarse: "3 days ago" is what someone wants to know about a memory, and a timestamp
+ * to the minute invites a precision the underlying data does not have.
+ */
+fun formatRelative(epochMillis: Long, now: Long = System.currentTimeMillis()): String {
+    val elapsed = (now - epochMillis).coerceAtLeast(0L)
+    val minutes = elapsed / 60_000
+    val hours = minutes / 60
+    val days = hours / 24
+    return when {
+        minutes < 1 -> "just now"
+        minutes < 60 -> "$minutes min ago"
+        hours < 24 -> if (hours == 1L) "an hour ago" else "$hours hours ago"
+        days < 7 -> if (days == 1L) "yesterday" else "$days days ago"
+        days < 30 -> "${days / 7} ${if (days / 7 == 1L) "week" else "weeks"} ago"
+        days < 365 -> "${days / 30} ${if (days / 30 == 1L) "month" else "months"} ago"
+        else -> "over a year ago"
+    }
+}

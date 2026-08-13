@@ -35,6 +35,8 @@ app/src/main/java/dev/klaiber/cirrus/
 │   ├── chat/               # ChatScreen, ChatViewModel, ChatUiState, ConversationExporter
 │   │   └── components/     # MessageItem, Composer, ModelPickerSheet, ParametersSheet, ...
 │   ├── conversations/       # ConversationDrawer + ConversationsViewModel
+│   ├── memory/             # MemoryScreen + MemoryViewModel (browse, edit, pin, retire)
+│   ├── agents/             # AgentsScreen + editor sheet + AgentsViewModel
 │   ├── settings/           # SettingsScreen + SettingsViewModel
 │   │   └── mcp/            # McpServersScreen, McpServerEditorSheet (probe), McpViewModel
 │   ├── components/         # HelpTooltip / HelpBadge, shared across screens
@@ -45,6 +47,9 @@ app/src/main/java/dev/klaiber/cirrus/
 ├── domain/
 │   ├── ChatEngine.kt       # the turn protocol: build request → stream → service tool calls
 │   ├── SpeechController.kt # read-aloud: chunking, ElevenLabs or the device engine, playback
+│   ├── agents/             # AgentRunner (headless turn) + AgentScheduler/AgentWorker
+│   ├── memory/             # MemoryRetriever (pure ranking), MemoryConsolidator, nightly worker
+│   ├── notify/             # Notifier interface + AndroidNotifier
 │   ├── TurnController.kt   # owns running turns on the application scope; persistence + errors
 │   ├── ConversationTitler.kt # when a thread is named, from what, and what to do on failure
 │   ├── ErrorMessages.kt    # the one place a failure becomes a sentence (Throwable.userMessage)
@@ -111,6 +116,19 @@ app/src/main/java/dev/klaiber/cirrus/
   not hammered.
 - **`ConversationRepository`** — Room-backed conversation/message/preset persistence, plus
   fork/truncate/rename operations.
+- **`MemoryRepository` / `MemoryRetriever`** — cross-session memory. Writes fold into a near
+  duplicate rather than appending, or the store fills with five phrasings of one fact. Retrieval is
+  term overlap weighted by term rarity, nudged by recency and by how often a memory has proved
+  useful — no embedding model, because running one on-device for a few hundred short sentences
+  costs more than it returns. `MemoryRetriever` is pure, and carries the tests.
+- **`MemoryConsolidator`** — the nightly pass. Harvests durable facts from threads touched since
+  the last run, then merges duplicates and retires what has been superseded. Nothing is deleted;
+  retiring is archiving, and the memory screen can restore anything.
+- **`AgentRunner`** — runs a scheduled prompt with nobody watching and writes the answer into an
+  ordinary conversation, which is what lets every existing transcript feature work on it for free.
+- **`AgentScheduler` / `ConsolidationScheduler`** — one-shot WorkManager requests that re-book
+  themselves. Periodic work has a fifteen-minute floor and drifts against the wall clock, which is
+  fine for a sync and useless for "07:30 on weekdays".
 - **`MathTypesetter`** — lays out a parsed formula as a tree of `MathBox`es, each a width plus a
   baseline splitting an ascent from a descent. The rules are TeX's in miniature: fractions and
   stretched delimiters centre on the *axis* (¼ em above the baseline) rather than on the baseline,
@@ -165,6 +183,15 @@ app/src/main/java/dev/klaiber/cirrus/
 - **Help text** lives next to the control it explains, via `HelpBadge`/`HelpTooltip`. If you add
   a setting or a parameter, it needs help copy — that is the whole point of the pattern.
 
+### Memory, agents and the tools switch
+
+The conversation's tools switch governs **external** tools only — web search, GitHub, MCP. Memory
+and notifications are offered either way, because that switch exists to control latency, cost and
+what leaves the device, and neither of those spends any of it. Gating memory behind it meant
+cross-session memory silently not working in most conversations, which is indistinguishable from
+it being broken. `ToolRegistry.find` re-checks the same gate, so a model that names `web_search`
+with the switch off is told the tool is unknown rather than quietly reaching the network.
+
 ### Writing a tool
 
 Implement `CirrusTool`, register it in `ToolRegistry` (via `GitHubToolSet` for GitHub ones), and:
@@ -207,7 +234,13 @@ Unit tests live in `app/src/test/java/...` mirroring the main package. Run with
 - The inline-emphasis matcher is simple: `**bold *italic***` (inner closing marker adjacent to
   the outer one) is not disambiguated; `**bold *italic* text**` works.
 - `ApiCredentials.normalizeBaseUrl` strips a trailing `/api` so callers can append `/api/...`.
-- Room is at **schema version 2**. `conversations.autoTitledAt` was added by `MIGRATION_1_2`;
+- Room is at **schema version 3**. `memories` and `agents` were added by `MIGRATION_2_3` as new
+  tables, so nothing existing is touched; the column types must match what Room generates for the
+  entities exactly or the identity hash check fails at open.
+- WorkManager's own initialiser is **removed in the manifest**: workers are built by Hilt, and
+  WorkManager initialising itself first means the first scheduled agent cannot be instantiated.
+  `CirrusApp` implements `Configuration.Provider` and installs the Hilt factory instead.
+- Room was at **schema version 2**. `conversations.autoTitledAt` was added by `MIGRATION_1_2`;
   null means the title belongs to the user and auto-titling must not touch it. A locally derived
   fallback title is stamped `Conversation.FALLBACK_TITLED_AT` (the epoch) so it reads as "titled,
   but long ago" and the next turn is free to replace it. Any further schema change needs a

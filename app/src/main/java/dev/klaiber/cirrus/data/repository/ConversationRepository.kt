@@ -42,6 +42,10 @@ class ConversationRepository @Inject constructor(
     suspend fun getConversation(id: String): Conversation? =
         conversationDao.getById(id)?.let(mapper::toDomain)
 
+    /** Threads updated since [since], for the nightly memory pass. */
+    suspend fun recentlyUpdated(since: Long, limit: Int): List<Conversation> =
+        conversationDao.updatedSince(since, limit).map(mapper::toDomain)
+
     suspend fun getMessages(conversationId: String): List<ChatMessage> =
         messageDao.getForConversation(conversationId).map(mapper::toDomain)
 

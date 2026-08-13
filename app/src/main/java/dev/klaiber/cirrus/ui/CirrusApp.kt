@@ -16,7 +16,11 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dev.klaiber.cirrus.ui.chat.ChatScreen
 import dev.klaiber.cirrus.ui.conversations.ConversationDrawer
+import dev.klaiber.cirrus.ui.agents.AgentsScreen
+import dev.klaiber.cirrus.ui.memory.MemoryScreen
 import dev.klaiber.cirrus.ui.settings.SettingsScreen
+import dev.klaiber.cirrus.ui.settings.SettingsSection
+import dev.klaiber.cirrus.ui.settings.SettingsSectionScreen
 import dev.klaiber.cirrus.ui.settings.mcp.McpServersScreen
 import kotlinx.coroutines.launch
 
@@ -33,7 +37,11 @@ private object Routes {
     const val CHAT = "chat"
     const val CHAT_PATTERN = "chat?$CHAT_ARG={$CHAT_ARG}"
     const val SETTINGS = "settings"
+    const val SECTION_ARG = "section"
+    const val SETTINGS_SECTION = "settings/section/{$SECTION_ARG}"
     const val MCP_SERVERS = "settings/mcp"
+    const val MEMORY = "memory"
+    const val AGENTS = "agents"
 }
 
 @Composable
@@ -94,7 +102,37 @@ fun CirrusApp(sharedPayload: SharedPayload = SharedPayload()) {
             composable(Routes.SETTINGS) {
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
+                    onOpenSection = { section ->
+                        navController.navigate("settings/section/${section.name}")
+                    },
+                    onOpenMemory = { navController.navigate(Routes.MEMORY) },
+                    onOpenAgents = { navController.navigate(Routes.AGENTS) },
+                )
+            }
+
+            composable(
+                route = Routes.SETTINGS_SECTION,
+                arguments = listOf(navArgument(Routes.SECTION_ARG) { type = NavType.StringType }),
+            ) { entry ->
+                SettingsSectionScreen(
+                    section = SettingsSection.fromRoute(
+                        entry.arguments?.getString(Routes.SECTION_ARG),
+                    ),
+                    onBack = { navController.popBackStack() },
                     onOpenMcpServers = { navController.navigate(Routes.MCP_SERVERS) },
+                )
+            }
+
+            composable(Routes.MEMORY) {
+                MemoryScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.AGENTS) {
+                AgentsScreen(
+                    onBack = { navController.popBackStack() },
+                    // An agent's answer is an ordinary thread, so opening one is ordinary
+                    // navigation: it lands in the transcript with the drawer and every action.
+                    onOpenConversation = navController::openChat,
                 )
             }
 

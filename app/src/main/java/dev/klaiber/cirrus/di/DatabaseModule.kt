@@ -9,7 +9,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.klaiber.cirrus.data.local.CirrusDatabase
 import dev.klaiber.cirrus.data.local.EntityMapper
+import dev.klaiber.cirrus.data.local.dao.AgentDao
 import dev.klaiber.cirrus.data.local.dao.ConversationDao
+import dev.klaiber.cirrus.data.local.dao.MemoryDao
 import dev.klaiber.cirrus.data.local.dao.MessageDao
 import dev.klaiber.cirrus.data.local.dao.PresetDao
 import kotlinx.serialization.json.Json
@@ -24,7 +26,7 @@ object DatabaseModule {
     fun provideDatabase(@ApplicationContext context: Context): CirrusDatabase =
         Room.databaseBuilder(context, CirrusDatabase::class.java, CirrusDatabase.NAME)
             // Cascading deletes of messages/attachments rely on foreign keys being enforced.
-            .addMigrations(CirrusDatabase.MIGRATION_1_2)
+            .addMigrations(CirrusDatabase.MIGRATION_1_2, CirrusDatabase.MIGRATION_2_3)
             .build()
 
     @Provides
@@ -35,6 +37,12 @@ object DatabaseModule {
 
     @Provides
     fun providePresetDao(database: CirrusDatabase): PresetDao = database.presetDao()
+
+    @Provides
+    fun provideMemoryDao(database: CirrusDatabase): MemoryDao = database.memoryDao()
+
+    @Provides
+    fun provideAgentDao(database: CirrusDatabase): AgentDao = database.agentDao()
 
     @Provides
     @Singleton
