@@ -28,10 +28,7 @@ class MainActivity : ComponentActivity() {
             val viewModel: MainViewModel = hiltViewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
 
-            CirrusTheme(
-                themeMode = settings.themeMode,
-                dynamicColor = settings.useDynamicColor,
-            ) {
+            CirrusTheme(themeMode = settings.themeMode) {
                 CirrusApp(sharedPayload = sharedPayload)
             }
         }

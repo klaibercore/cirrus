@@ -91,8 +91,6 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setThemeMode(mode: ThemeMode) = edit { it[Keys.THEME_MODE] = mode.name }
 
-    suspend fun setDynamicColor(enabled: Boolean) = edit { it[Keys.DYNAMIC_COLOR] = enabled }
-
     suspend fun setDeveloperMode(enabled: Boolean) = edit { it[Keys.DEVELOPER_MODE] = enabled }
 
     suspend fun setDefaultParams(params: GenerationParams) = edit {
@@ -209,7 +207,6 @@ class SettingsRepository @Inject constructor(
         themeMode = this[Keys.THEME_MODE]
             ?.let { name -> runCatching { ThemeMode.valueOf(name) }.getOrNull() }
             ?: ThemeMode.SYSTEM,
-        useDynamicColor = this[Keys.DYNAMIC_COLOR] ?: true,
         developerMode = this[Keys.DEVELOPER_MODE] ?: false,
         defaultParams = this[Keys.DEFAULT_PARAMS]
             ?.let { raw -> runCatching { json.decodeFromString(GenerationParams.serializer(), raw) }.getOrNull() }
@@ -247,7 +244,6 @@ class SettingsRepository @Inject constructor(
         val API_KEY = stringPreferencesKey("api_key_encrypted")
         val DEFAULT_MODEL = stringPreferencesKey("default_model")
         val THEME_MODE = stringPreferencesKey("theme_mode")
-        val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val DEVELOPER_MODE = booleanPreferencesKey("developer_mode")
         val DEFAULT_PARAMS = stringPreferencesKey("default_params")
         val TOOLS_DEFAULT = booleanPreferencesKey("tools_default")

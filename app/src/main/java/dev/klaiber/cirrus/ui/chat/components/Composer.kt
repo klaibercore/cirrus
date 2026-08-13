@@ -44,6 +44,11 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import dev.klaiber.cirrus.domain.model.Attachment
 import dev.klaiber.cirrus.domain.model.ThinkMode
+import dev.klaiber.cirrus.ui.components.Hairline
+import dev.klaiber.cirrus.ui.components.OutlinedPanel
+import dev.klaiber.cirrus.ui.components.Tag
+import dev.klaiber.cirrus.ui.theme.LocalTagColors
+import dev.klaiber.cirrus.ui.theme.Pill
 
 /**
  * The message composer.
@@ -78,8 +83,12 @@ fun Composer(
         color = MaterialTheme.colorScheme.surface,
         modifier = modifier.fillMaxWidth(),
     ) {
+        Column {
+        // The transcript is separated from the controls by a rule, matching the header. Without it
+        // a reply that scrolls to the last line appears to run straight into the input box.
+        Hairline()
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
             if (attachments.isNotEmpty()) {
                 AttachmentStrip(
@@ -97,9 +106,14 @@ fun Composer(
                 )
             }
 
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            // Outlined on plain surface rather than a filled slab. The reference design's inputs
+            // are bordered, and on a white page a filled composer is a grey band across the bottom
+            // of every screenshot. 24dp is as close to a pill as a box that grows to eight lines
+            // can honestly get: at the one-line height it reads as fully rounded, and it stays
+            // sane when the field is tall.
+            OutlinedPanel(
                 shape = RoundedCornerShape(24.dp),
+                borderColor = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column {
@@ -186,11 +200,15 @@ fun Composer(
                         Spacer(Modifier.weight(1f))
 
                         if (thinkMode != ThinkMode.OFF) {
-                            Text(
-                                text = thinkMode.label.lowercase(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(end = 6.dp),
+                            // The same indigo the model picker uses for the "thinking" capability.
+                            // Reusing the badge here rather than inventing a second treatment means
+                            // the colour keeps meaning one thing across the whole app.
+                            val tags = LocalTagColors.current
+                            Tag(
+                                label = thinkMode.label.lowercase(),
+                                background = tags.indigoBackground,
+                                contentColor = tags.indigoText,
+                                modifier = Modifier.padding(end = 8.dp),
                             )
                         }
 
@@ -202,6 +220,7 @@ fun Composer(
                     }
                 }
             }
+        }
         }
     }
 }
@@ -218,11 +237,7 @@ private fun ListeningBanner(
     isOnDevice: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        shape = RoundedCornerShape(14.dp),
-        modifier = modifier.fillMaxWidth(),
-    ) {
+    OutlinedPanel(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -233,7 +248,7 @@ private fun ListeningBanner(
                 Text(
                     text = "Listening",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = if (isOnDevice) {
@@ -242,13 +257,13 @@ private fun ListeningBanner(
                         "Transcribed by your device's speech service"
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Text(
                 text = "Tap the mic to stop",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -267,8 +282,8 @@ private fun LevelMeter(level: Float) {
             Box(
                 modifier = Modifier
                     .size(width = 3.dp, height = height)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(MaterialTheme.colorScheme.onSecondaryContainer),
+                    .clip(Pill)
+                    .background(MaterialTheme.colorScheme.onSurface),
             )
         }
     }
@@ -337,7 +352,7 @@ private fun SendButton(
         Box(
             modifier = Modifier
                 .size(38.dp)
-                .clip(RoundedCornerShape(50))
+                .clip(Pill)
                 .background(containerColor),
         )
         IconButton(

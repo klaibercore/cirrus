@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="launch_background">#FAF9F7</color>
-    <color name="ic_launcher_background">#1F1D1B</color>
+    <!--
+        The pre-Compose launch window, and the launcher icon's plate. Both are literal steps on the
+        neutral ramp in ui/theme/Color.kt: the launch background is `surface` so the window that
+        appears before Compose is running is indistinguishable from the one that replaces it, and
+        any drift between the two shows up as a flash on every cold start.
+    -->
+    <color name="launch_background">#FFFFFF</color>
+    <!-- The icon's plate: pale, with the ink cloud on top. See ic_launcher_foreground.xml. -->
+    <color name="ic_launcher_background">#FAFAFA</color>
 </resources>

@@ -71,9 +71,14 @@ import dev.klaiber.cirrus.domain.model.ChatMessage
 import dev.klaiber.cirrus.domain.model.GenerationStats
 import dev.klaiber.cirrus.domain.model.Role
 import dev.klaiber.cirrus.domain.model.ToolInvocation
+import dev.klaiber.cirrus.ui.components.OutlinedPanel
 import dev.klaiber.cirrus.ui.markdown.MarkdownText
 import dev.klaiber.cirrus.ui.markdown.highlighting
 import dev.klaiber.cirrus.ui.markdown.MonospaceBlock
+import dev.klaiber.cirrus.ui.theme.ContainerShape
+import dev.klaiber.cirrus.ui.theme.LargeContainerShape
+import dev.klaiber.cirrus.ui.theme.LocalTagColors
+import dev.klaiber.cirrus.ui.theme.Pill
 import dev.klaiber.cirrus.ui.util.formatBytes
 import dev.klaiber.cirrus.ui.util.formatNanos
 import dev.klaiber.cirrus.ui.util.rememberClipboard
@@ -136,7 +141,10 @@ private fun UserMessage(
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalHapticFeedback.current
-    val bubbleShape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp)
+    // A uniform radius rather than the usual clipped "tail" corner. The reference design resolves
+    // every corner to the same answer, and the bubble does not need a tail to be legible: it is the
+    // only right-aligned, filled thing in a column of full-width unboxed prose.
+    val bubbleShape = LargeContainerShape
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -147,7 +155,7 @@ private fun UserMessage(
         }
         if (message.content.isNotBlank()) {
             Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = MaterialTheme.colorScheme.surfaceContainer,
                 shape = bubbleShape,
                 // A fraction rather than a fixed cap: 320dp is most of a compact phone's width
                 // anyway, and a postage stamp on a tablet.
@@ -168,7 +176,7 @@ private fun UserMessage(
                     text = AnnotatedString(message.content).highlighting(highlight, highlightColor()),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             }
         }
@@ -276,11 +284,10 @@ private fun ThinkingSection(
 ) {
     var expanded by remember(isStreaming) { mutableStateOf(isStreaming) }
 
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(12.dp),
-        modifier = modifier.fillMaxWidth(),
-    ) {
+    // Outlined rather than filled. A tinted panel inside a reply competes with the code blocks
+    // below it for the reader's "this part is different" signal; a hairline box says the same thing
+    // and costs nothing, which is the trade the reference design makes everywhere.
+    OutlinedPanel(modifier = modifier.fillMaxWidth()) {
         Column {
             Row(
                 modifier = Modifier
@@ -326,11 +333,7 @@ private fun ToolCard(invocation: ToolInvocation, modifier: Modifier = Modifier) 
     var expanded by remember { mutableStateOf(false) }
     val summary = remember(invocation.argumentsJson) { summarizeArguments(invocation.argumentsJson) }
 
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(12.dp),
-        modifier = modifier.fillMaxWidth(),
-    ) {
+    OutlinedPanel(modifier = modifier.fillMaxWidth()) {
         Column {
             Row(
                 modifier = Modifier
@@ -342,7 +345,7 @@ private fun ToolCard(invocation: ToolInvocation, modifier: Modifier = Modifier) 
                 Icon(
                     imageVector = Icons.Outlined.Search,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(8.dp))
@@ -508,9 +511,9 @@ private fun RawRequestSection(requestJson: String) {
         Text(
             text = if (expanded) "Hide request JSON" else "Show request JSON",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
+                .clip(MaterialTheme.shapes.extraSmall)
                 .clickable { expanded = !expanded }
                 .padding(horizontal = 4.dp, vertical = 4.dp),
         )
@@ -524,7 +527,7 @@ private fun RawRequestSection(requestJson: String) {
 private fun ErrorCard(error: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         color = MaterialTheme.colorScheme.errorContainer,
-        shape = RoundedCornerShape(12.dp),
+        shape = ContainerShape,
         modifier = modifier.fillMaxWidth(),
     ) {
         Row(
@@ -587,7 +590,7 @@ private fun PulsingDot() {
         modifier = Modifier
             .size(9.dp)
             .alpha(alpha)
-            .clip(RoundedCornerShape(50))
+            .clip(Pill)
             .background(MaterialTheme.colorScheme.primary),
     )
 }
@@ -610,10 +613,7 @@ fun AttachmentStrip(
 
 @Composable
 private fun AttachmentChip(attachment: Attachment, onRemove: ((String) -> Unit)?) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(10.dp),
-    ) {
+    OutlinedPanel(shape = ContainerShape) {
         Row(
             modifier = Modifier.padding(
                 start = if (attachment.kind == Attachment.Kind.IMAGE) 0.dp else 10.dp,
@@ -629,7 +629,7 @@ private fun AttachmentChip(attachment: Attachment, onRemove: ((String) -> Unit)?
                     contentDescription = attachment.displayName,
                     modifier = Modifier
                         .size(72.dp)
-                        .clip(RoundedCornerShape(10.dp)),
+                        .clip(ContainerShape),
                 )
             } else {
                 Icon(
@@ -672,7 +672,7 @@ private fun AttachmentChip(attachment: Attachment, onRemove: ((String) -> Unit)?
 
 /** The same tint the markdown renderer uses, so a match looks the same wherever it is found. */
 @Composable
-private fun highlightColor() = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+private fun highlightColor() = LocalTagColors.current.searchHighlight
 
 /** Extracts a one-line hint from a tool's argument JSON without a full parse. */
 private fun summarizeArguments(argumentsJson: String): String =

@@ -57,6 +57,9 @@ import dev.klaiber.cirrus.data.mcp.McpCatalogEntry
 import dev.klaiber.cirrus.data.mcp.McpServerConfig
 import dev.klaiber.cirrus.data.repository.McpServerState
 import dev.klaiber.cirrus.ui.components.HelpBadge
+import dev.klaiber.cirrus.ui.components.OutlinedPanel
+import dev.klaiber.cirrus.ui.theme.ContainerShape
+import dev.klaiber.cirrus.ui.theme.LargeContainerShape
 
 /**
  * The MCP servers the user has attached.
@@ -206,13 +209,7 @@ private fun ServerCard(
     onRefresh: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Card(
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    OutlinedPanel(shape = LargeContainerShape, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -363,12 +360,10 @@ private fun StatusLine(text: String, color: androidx.compose.ui.graphics.Color) 
 
 @Composable
 private fun CatalogRow(entry: McpCatalogEntry, onAdd: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onAdd),
+    OutlinedPanel(
+        onClick = onAdd,
+        shape = ContainerShape,
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -392,7 +387,7 @@ private fun CatalogRow(entry: McpCatalogEntry, onAdd: () -> Unit) {
             Icon(
                 imageVector = Icons.Outlined.Add,
                 contentDescription = "Add ${entry.label}",
-                tint = MaterialTheme.colorScheme.primary,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -401,11 +396,7 @@ private fun CatalogRow(entry: McpCatalogEntry, onAdd: () -> Unit) {
 
 @Composable
 private fun EmptyServersCard() {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    OutlinedPanel(shape = LargeContainerShape, modifier = Modifier.fillMaxWidth()) {
         Box(Modifier.padding(20.dp)) {
             Text(
                 text = "No servers attached. Add one below, or paste a URL with the button.",

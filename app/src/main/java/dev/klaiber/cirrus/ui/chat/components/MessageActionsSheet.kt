@@ -39,6 +39,7 @@ import dev.klaiber.cirrus.domain.model.ChatMessage
 import dev.klaiber.cirrus.domain.model.Role
 import dev.klaiber.cirrus.ui.markdown.MonospaceBlock
 import dev.klaiber.cirrus.ui.util.formatDateTime
+import dev.klaiber.cirrus.ui.theme.ContainerShape
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,7 +80,7 @@ fun MessageActionsSheet(
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it },
-                    shape = RoundedCornerShape(14.dp),
+                    shape = ContainerShape,
                     minLines = 3,
                     maxLines = 10,
                     modifier = Modifier.fillMaxWidth(),

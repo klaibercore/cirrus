@@ -1,5 +1,6 @@
 package dev.klaiber.cirrus.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -7,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -18,12 +18,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.klaiber.cirrus.ui.theme.Pill
 
 /**
  * The "there is nothing here yet, and that is fine" state.
  *
  * An empty list with no explanation reads as a bug. One icon, one line of what this screen is for,
  * and one line of how something gets into it turns the same screen into an invitation.
+ *
+ * The icon sits in an outlined ring rather than a filled colour blob. On a page whose only other
+ * shapes are hairlines, a solid disc of container colour is the single heaviest mark on the screen —
+ * and it lands on the one state where nothing important is happening.
  */
 @Composable
 fun EmptyState(
@@ -38,17 +43,18 @@ fun EmptyState(
         verticalArrangement = Arrangement.Center,
     ) {
         Surface(
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            shape = Pill,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.padding(18.dp).size(28.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(18.dp).size(26.dp),
             )
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(18.dp))
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
@@ -65,13 +71,21 @@ fun EmptyState(
     }
 }
 
-/** The small coloured caps that head a group of rows. */
+/**
+ * The label above a group of rows.
+ *
+ * Sentence case in muted ink, not tracked-out coloured caps. Two reasons it changed: `primary` is
+ * now near-black, so a "coloured" label would simply be a second heading competing with the real
+ * one; and uppercase tracking is a strong typographic flavour that belongs to a different design
+ * than this one. The reference site labels its groups quietly and lets the hairline above them do
+ * the separating.
+ */
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
-        text = text.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(top = 14.dp, bottom = 2.dp),
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(top = 18.dp, bottom = 6.dp),
     )
 }

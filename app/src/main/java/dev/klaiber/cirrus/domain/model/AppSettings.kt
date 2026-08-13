@@ -17,7 +17,6 @@ data class AppSettings(
     val hasApiKey: Boolean = false,
     val defaultModel: String = "",
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val useDynamicColor: Boolean = true,
     /** Surfaces the raw request/response inspector and per-message stats. */
     val developerMode: Boolean = false,
     val defaultParams: GenerationParams = GenerationParams.Default,

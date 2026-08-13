@@ -61,6 +61,9 @@ import dev.klaiber.cirrus.domain.model.MemoryKind
 import dev.klaiber.cirrus.ui.components.EmptyState
 import dev.klaiber.cirrus.ui.components.SectionLabel
 import dev.klaiber.cirrus.ui.util.formatRelative
+import dev.klaiber.cirrus.ui.components.OutlinedPanel
+import dev.klaiber.cirrus.ui.theme.ContainerShape
+import dev.klaiber.cirrus.ui.theme.LargeContainerShape
 
 /**
  * Everything Cirrus remembers, in one readable list.
@@ -123,7 +126,7 @@ fun MemoryScreen(
                     placeholder = { Text("Search memories") },
                     leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                     singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = LargeContainerShape,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -235,7 +238,7 @@ private fun MemorySummary(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
-        shape = RoundedCornerShape(20.dp),
+        shape = LargeContainerShape,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -316,12 +319,10 @@ private fun MemoryCard(
     onTogglePin: () -> Unit,
     onArchive: () -> Unit,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(18.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onEdit),
+    OutlinedPanel(
+        onClick = onEdit,
+        shape = LargeContainerShape,
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 14.dp, bottom = 10.dp)) {
             Text(
@@ -385,9 +386,12 @@ private fun MemoryCard(
 
 @Composable
 private fun RetiredCard(memory: Memory, onRestore: () -> Unit, onDelete: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLowest,
-        shape = RoundedCornerShape(18.dp),
+    // Retired memories are still here, just no longer in play — a dashed-looking, lower-contrast
+    // border says that without needing a label, where a fill would make them look as live as the
+    // active ones sitting directly above.
+    OutlinedPanel(
+        shape = LargeContainerShape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -455,7 +459,7 @@ private fun MemoryEditorSheet(
                 placeholder = { Text("Prefers Kotlin, and dislikes Java's ceremony") },
                 minLines = 2,
                 maxLines = 6,
-                shape = RoundedCornerShape(16.dp),
+                shape = LargeContainerShape,
                 modifier = Modifier.fillMaxWidth(),
             )
 

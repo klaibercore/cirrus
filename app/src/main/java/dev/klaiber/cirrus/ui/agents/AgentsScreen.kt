@@ -75,6 +75,9 @@ import dev.klaiber.cirrus.domain.model.AgentRunStatus
 import dev.klaiber.cirrus.ui.components.EmptyState
 import dev.klaiber.cirrus.ui.util.formatRelative
 import java.time.DayOfWeek
+import dev.klaiber.cirrus.ui.components.OutlinedPanel
+import dev.klaiber.cirrus.ui.theme.ContainerShape
+import dev.klaiber.cirrus.ui.theme.LargeContainerShape
 
 /**
  * Prompts that run on a clock.
@@ -248,7 +251,7 @@ fun AgentsScreen(
 private fun NotificationsBlockedCard(onFix: () -> Unit, onOpenSettings: () -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.errorContainer,
-        shape = RoundedCornerShape(18.dp),
+        shape = LargeContainerShape,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(16.dp)) {
@@ -292,11 +295,7 @@ private fun AgentCard(
     onEdit: () -> Unit,
     onOpenRun: () -> Unit,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(20.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    OutlinedPanel(shape = LargeContainerShape, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f).clickable(onClick = onEdit)) {
@@ -329,7 +328,7 @@ private fun AgentCard(
                 Spacer(Modifier.height(10.dp))
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = ContainerShape,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(enabled = agent.lastConversationId != null, onClick = onOpenRun),
@@ -429,7 +428,7 @@ private fun AgentEditorSheet(
                 label = { Text("Name") },
                 placeholder = { Text("Morning briefing") },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = ContainerShape,
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -443,7 +442,7 @@ private fun AgentEditorSheet(
                 },
                 minLines = 3,
                 maxLines = 8,
-                shape = RoundedCornerShape(14.dp),
+                shape = ContainerShape,
                 modifier = Modifier.fillMaxWidth(),
             )
 

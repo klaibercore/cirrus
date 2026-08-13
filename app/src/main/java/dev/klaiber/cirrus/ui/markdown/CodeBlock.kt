@@ -1,6 +1,7 @@
 package dev.klaiber.cirrus.ui.markdown
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,7 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.WrapText
+import androidx.compose.material.icons.automirrored.outlined.WrapText
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,7 @@ import dev.klaiber.cirrus.ui.theme.CodeTextStyle
 import dev.klaiber.cirrus.ui.theme.LocalCodeColors
 import dev.klaiber.cirrus.ui.util.rememberClipboard
 import kotlinx.coroutines.delay
+import dev.klaiber.cirrus.ui.theme.ContainerShape
 
 /**
  * A fenced code block with a language label, copy action and a wrap toggle.
@@ -64,11 +66,15 @@ fun CodeBlock(
         }
     }
 
+    // Fill *and* border. A code block is the one place the reference design uses both: the fill
+    // separates code from prose, and the border keeps the block from dissolving into the page in
+    // dark mode, where a near-black inset on a near-black background has almost no edge of its own.
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(codeColors.background),
+            .clip(ContainerShape)
+            .background(codeColors.background)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, ContainerShape),
     ) {
         Row(
             modifier = Modifier
@@ -88,7 +94,7 @@ fun CodeBlock(
                     modifier = Modifier.minimumInteractiveComponentSize(),
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.WrapText,
+                        imageVector = Icons.AutoMirrored.Outlined.WrapText,
                         contentDescription = if (wrapped) "Disable wrapping" else "Wrap long lines",
                         tint = if (wrapped) MaterialTheme.colorScheme.primary else codeColors.comment,
                         modifier = Modifier.size(18.dp),
@@ -141,7 +147,7 @@ fun MonospaceBlock(
     }
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(ContainerShape)
             .background(codeColors.background)
             .horizontalScroll(rememberScrollState())
             .padding(12.dp),

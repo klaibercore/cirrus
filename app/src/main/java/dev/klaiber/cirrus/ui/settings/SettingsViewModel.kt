@@ -170,10 +170,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setThemeMode(mode) }
     }
 
-    fun setDynamicColor(enabled: Boolean) {
-        viewModelScope.launch { settingsRepository.setDynamicColor(enabled) }
-    }
-
     fun setDeveloperMode(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setDeveloperMode(enabled) }
     }

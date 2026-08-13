@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.3.0] - 2026-08-13
+
+### Changed
+
+- **Cirrus looks like what it talks to.** The interface has been rebuilt around ollama.com's visual
+  language: a monochrome page, hairline rules instead of shadows, a full pill on anything you can
+  press, and headings set in a rounded display face over the platform's own text face. The warm
+  clay palette and its six competing corner radii are gone; there is one neutral ramp and two radii.
+- **Colour now means something.** It appears in exactly three places: the capability tags under a
+  model name — cyan for vision, blue for tools, indigo for thinking, as on ollama.com itself — plus
+  links and search hits. Everything else, including every control and every selected row, is a step
+  on the grey ramp. A tinted panel no longer competes with the syntax highlighting inside it.
+- **Cards show their edges.** Reasoning traces, tool calls, model cards, settings groups and the
+  composer are bordered rather than filled, which is what lets a dense list read as one object
+  instead of a stack of grey slabs.
+- **A new launcher icon.** The cloud is now ink on a pale plate rather than pale on a dark one, and
+  it has been redrawn wider, flatter and smaller so it is properly centred with room to breathe
+  inside the launcher's mask. The notification icon shares its geometry exactly; the two had
+  quietly drifted into different shapes.
+
+### Removed
+
+- **Dynamic colour.** Material You repaints the app from your wallpaper, which is directly at odds
+  with a design built on having no colour in it — a lilac-tinted monochrome interface is neither.
+  Light and dark remain, since that is a question about the room you are in rather than about the
+  design.
+
 ## [1.2.0] - 2026-08-13
 
 ### Added

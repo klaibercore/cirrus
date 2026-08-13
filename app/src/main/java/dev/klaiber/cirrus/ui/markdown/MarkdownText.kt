@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.takeOrElse
 import dev.klaiber.cirrus.ui.markdown.math.MathBlock
 import dev.klaiber.cirrus.ui.markdown.math.rememberMathTypesetter
 import dev.klaiber.cirrus.ui.theme.LocalCodeColors
+import dev.klaiber.cirrus.ui.theme.LocalTagColors
+import dev.klaiber.cirrus.ui.theme.ContainerShape
 
 /**
  * Renders a markdown document.
@@ -81,14 +83,18 @@ private fun markdownStyles(
     highlight: String,
 ): MarkdownStyles {
     val codeColors = LocalCodeColors.current
+    val tagColors = LocalTagColors.current
     val math = rememberMathTypesetter(textStyle.fontSize.takeOrElse { DEFAULT_MATH_SIZE }, color)
     return MarkdownStyles(
-        linkColor = MaterialTheme.colorScheme.primary,
+        // Not `primary`. On this palette `primary` is near-black, so a link styled with it is the
+        // same colour as the sentence containing it — the two roles colour has to keep are a link
+        // and a search hit, and both now come from the tag palette rather than the scheme.
+        linkColor = tagColors.linkText,
         inlineCodeColor = codeColors.keyword,
         inlineCodeBackground = codeColors.background,
         math = math,
         highlight = highlight,
-        highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = HIGHLIGHT_ALPHA),
+        highlightColor = tagColors.searchHighlight,
     )
 }
 
@@ -164,7 +170,7 @@ private fun RenderBlock(
                     .width(3.dp)
                     .fillMaxHeight()
                     .background(
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        MaterialTheme.colorScheme.outline,
                         RoundedCornerShape(2.dp),
                     ),
             )
@@ -276,7 +282,7 @@ private fun MarkdownTable(
 
     Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(ContainerShape)
             .background(MaterialTheme.colorScheme.surfaceContainer)
             .horizontalScroll(rememberScrollState()),
     ) {

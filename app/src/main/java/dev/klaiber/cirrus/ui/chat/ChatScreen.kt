@@ -31,12 +31,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
@@ -69,11 +72,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -81,6 +86,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.klaiber.cirrus.domain.model.Role
 import dev.klaiber.cirrus.ui.SharedPayload
+import dev.klaiber.cirrus.ui.components.Hairline
+import dev.klaiber.cirrus.ui.components.OutlinedPanel
+import dev.klaiber.cirrus.ui.components.PillButton
+import dev.klaiber.cirrus.ui.theme.ContainerShape
+import dev.klaiber.cirrus.ui.theme.LargeContainerShape
+import dev.klaiber.cirrus.ui.theme.Pill
 import dev.klaiber.cirrus.ui.chat.components.Composer
 import dev.klaiber.cirrus.ui.chat.components.MessageActionsSheet
 import dev.klaiber.cirrus.ui.chat.components.MessageItem
@@ -221,10 +232,17 @@ fun ChatScreen(
                     onClose = viewModel::closeSearch,
                 )
             } else {
+            Column {
             TopAppBar(
                 title = {
+                    // One tap target covering both lines, clipped so the ripple has an edge to
+                    // stop at. Without the clip the press state bleeds the full width of the
+                    // title slot, which on a short conversation name looks like a bug.
                     Column(
-                        modifier = Modifier.clickable { showModelPicker = true },
+                        modifier = Modifier
+                            .clip(ContainerShape)
+                            .clickable { showModelPicker = true }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                     ) {
                         Text(
                             text = state.title,
@@ -235,11 +253,12 @@ fun ChatScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = state.model.ifBlank { "Choose a model" },
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            Spacer(Modifier.width(2.dp))
                             Icon(
                                 imageVector = Icons.Outlined.ExpandMore,
                                 contentDescription = "Change model",
@@ -303,6 +322,11 @@ fun ChatScreen(
                     containerColor = MaterialTheme.colorScheme.surface,
                 ),
             )
+            // The header is separated from the page by a rule, not by a shadow or a tint. It is
+            // the single most characteristic move in the reference design, and the reason a
+            // scrolled transcript never appears to slide *under* anything.
+            Hairline()
+            }
             }
         },
         bottomBar = {
@@ -490,6 +514,7 @@ private fun FindBar(
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
+    Column {
     TopAppBar(
         title = {
             TextField(
@@ -534,6 +559,8 @@ private fun FindBar(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
     )
+    Hairline()
+    }
 }
 
 /**
@@ -544,17 +571,20 @@ private fun FindBar(
  */
 @Composable
 private fun JumpToLatestButton(isGenerating: Boolean, onClick: () -> Unit) {
+    // The one place a solid black pill is the right answer rather than a loud one: this floats over
+    // running text, and an outlined pill on a transparent fill would let the transcript show
+    // through it. `inverseSurface` is the far end of the neutral ramp, so it separates on contrast
+    // alone — which is exactly how the reference design gets depth without a shadow.
     Surface(
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        shape = RoundedCornerShape(50),
-        shadowElevation = 3.dp,
+        color = MaterialTheme.colorScheme.inverseSurface,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        shape = Pill,
         modifier = Modifier.clickable(onClick = onClick),
     ) {
         Row(
             modifier = Modifier
                 .heightIn(min = 40.dp)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -601,12 +631,11 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit) {
 
 @Composable
 private fun ApiKeyPrompt(onOpenSettings: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(20.dp),
+    OutlinedPanel(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
+        shape = LargeContainerShape,
     ) {
         Column(Modifier.padding(20.dp)) {
             Text(
@@ -619,38 +648,45 @@ private fun ApiKeyPrompt(onOpenSettings: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(14.dp))
-            Surface(
-                color = MaterialTheme.colorScheme.primary,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.clickable(onClick = onOpenSettings),
-            ) {
-                Text(
-                    text = "Open settings",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                )
-            }
+            Spacer(Modifier.height(16.dp))
+            PillButton(label = "Open settings", onClick = onOpenSettings)
         }
     }
 }
 
+/**
+ * The first screen of a new thread, and the app's one piece of stage.
+ *
+ * Everywhere else the design gets out of the way of the transcript, which leaves exactly one moment
+ * to say what the app is: a blank conversation. It is built like the reference site's hero —
+ * the mark, one large line set in the rounded display face, one muted line under it, and openings
+ * offered as bordered rows rather than as tinted chips. The rows are hairline-outlined for the same
+ * reason the model list is: it lets three of them read as one object instead of three buttons.
+ */
 @Composable
 private fun EmptyChatState(hasModel: Boolean, onSuggestionClick: (String) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 28.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Icon(
+            imageVector = Icons.Outlined.Cloud,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(40.dp),
+        )
+        Spacer(Modifier.height(20.dp))
         Text(
             text = "What should we dig into?",
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.displaySmall,
             color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(10.dp))
         Text(
             text = if (hasModel) {
                 "Attach files, enable web search, or tune sampling from the composer."
@@ -659,22 +695,33 @@ private fun EmptyChatState(hasModel: Boolean, onSuggestionClick: (String) -> Uni
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(28.dp))
         SUGGESTIONS.forEach { suggestion ->
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                shape = RoundedCornerShape(14.dp),
+            OutlinedPanel(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-                    .clickable { onSuggestionClick(suggestion) },
+                    .padding(bottom = 8.dp),
+                onClick = { onSuggestionClick(suggestion) },
             ) {
-                Text(
-                    text = suggestion,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = suggestion,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
             }
         }
     }

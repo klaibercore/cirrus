@@ -71,6 +71,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import dev.klaiber.cirrus.ui.components.SectionLabel
 import dev.klaiber.cirrus.ui.components.HelpBadge
 import dev.klaiber.cirrus.ui.components.HelpTooltip
+import dev.klaiber.cirrus.ui.components.Hairline
+import dev.klaiber.cirrus.ui.components.OutlinedPanel
+import dev.klaiber.cirrus.ui.theme.ContainerShape
+import dev.klaiber.cirrus.ui.theme.LargeContainerShape
 
 /**
  * The settings hub.
@@ -178,26 +182,32 @@ fun SettingsScreen(
 @Composable
 private fun ConnectionSummary(hasKey: Boolean, host: String, model: String, onClick: () -> Unit) {
     val connected = hasKey || !host.contains("ollama.com")
-    val container = if (connected) {
-        MaterialTheme.colorScheme.secondaryContainer
-    } else {
-        MaterialTheme.colorScheme.errorContainer
-    }
-    val onContainer = if (connected) {
-        MaterialTheme.colorScheme.onSecondaryContainer
-    } else {
-        MaterialTheme.colorScheme.onErrorContainer
-    }
 
-    Surface(
-        color = container,
-        shape = RoundedCornerShape(20.dp),
+    // Connected is the ordinary case, so it gets the ordinary treatment: an outlined row like every
+    // other. Only the failure is tinted. A green-equivalent "all is well" panel spends the reader's
+    // attention on the state that needed none of it.
+    OutlinedPanel(
+        onClick = onClick,
+        shape = LargeContainerShape,
+        color = if (connected) {
+            MaterialTheme.colorScheme.surface
+        } else {
+            MaterialTheme.colorScheme.errorContainer
+        },
+        borderColor = if (connected) {
+            MaterialTheme.colorScheme.outlineVariant
+        } else {
+            MaterialTheme.colorScheme.error
+        },
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick),
+            .padding(top = 8.dp),
     ) {
+        val onContainer = if (connected) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            MaterialTheme.colorScheme.onErrorContainer
+        }
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = if (connected) {
@@ -207,6 +217,7 @@ private fun ConnectionSummary(hasKey: Boolean, host: String, model: String, onCl
                 },
                 contentDescription = null,
                 tint = onContainer,
+                modifier = Modifier.size(20.dp),
             )
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
@@ -221,7 +232,11 @@ private fun ConnectionSummary(hasKey: Boolean, host: String, model: String, onCl
                         if (model.isNotBlank()) append(" · ").append(model)
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = onContainer,
+                    color = if (connected) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        onContainer
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -229,29 +244,24 @@ private fun ConnectionSummary(hasKey: Boolean, host: String, model: String, onCl
             Icon(
                 imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                 contentDescription = null,
-                tint = onContainer,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
             )
         }
     }
 }
 
+/** A group of rows as one bordered object, hairline-separated — the reference site's list idiom. */
 @Composable
 private fun HubCard(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(20.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    OutlinedPanel(shape = LargeContainerShape, modifier = Modifier.fillMaxWidth()) {
         Column(content = content)
     }
 }
 
 @Composable
 private fun HubDivider() {
-    HorizontalDivider(
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-        modifier = Modifier.padding(start = 56.dp),
-    )
+    Hairline(startIndent = 56.dp)
 }
 
 @Composable
@@ -266,8 +276,8 @@ private fun HubRow(icon: ImageVector, title: String, summary: String, onClick: (
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(22.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
         )
         Spacer(Modifier.width(18.dp))
         Column(Modifier.weight(1f)) {
@@ -521,14 +531,6 @@ fun SettingsSectionScreen(
                     onSelect = viewModel::setThemeMode,
                 )
                 SwitchRow(
-                    title = "Dynamic color",
-                    subtitle = "Follow the system wallpaper palette on Android 12+",
-                    help = "Recolours Cirrus from your wallpaper's palette. Off uses the app's own " +
-                        "colours, which stay the same whatever your home screen looks like.",
-                    checked = state.settings.useDynamicColor,
-                    onCheckedChange = viewModel::setDynamicColor,
-                )
-                SwitchRow(
                     title = "Render markdown",
                     subtitle = "Turn off to read raw model output verbatim",
                     help = "Formats replies: headings, lists, tables, and syntax-highlighted code " +
@@ -724,7 +726,7 @@ private fun ElevenLabsKeyField(hasKey: Boolean, onSave: (String) -> Unit, onClea
                     )
                 }
             },
-            shape = RoundedCornerShape(14.dp),
+            shape = ContainerShape,
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))
@@ -772,7 +774,7 @@ private fun VoicePicker(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(ContainerShape)
                 .clickable {
                     if (voices.isEmpty()) onLoad() else expanded = true
                 }
@@ -900,7 +902,7 @@ private fun ApiKeyField(
                     )
                 }
             },
-            shape = RoundedCornerShape(14.dp),
+            shape = ContainerShape,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -1025,7 +1027,7 @@ private fun GitHubTokenField(
                     )
                 }
             },
-            shape = RoundedCornerShape(14.dp),
+            shape = ContainerShape,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -1075,7 +1077,7 @@ private fun BaseUrlField(baseUrl: String, onSave: (String) -> Unit) {
             label = { Text("Host") },
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-            shape = RoundedCornerShape(14.dp),
+            shape = ContainerShape,
             modifier = Modifier.fillMaxWidth(),
         )
         Text(

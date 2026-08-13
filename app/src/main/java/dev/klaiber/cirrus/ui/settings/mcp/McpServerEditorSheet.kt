@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import dev.klaiber.cirrus.data.mcp.McpToolDescriptor
 import dev.klaiber.cirrus.data.mcp.McpTransportKind
 import dev.klaiber.cirrus.data.repository.McpProbeResult
+import dev.klaiber.cirrus.ui.theme.ContainerShape
 
 /**
  * Add or edit one server.
@@ -103,7 +104,7 @@ fun McpServerEditorSheet(
                 label = { Text("Server URL") },
                 placeholder = { Text("https://mcp.example.com/mcp") },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = ContainerShape,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -119,7 +120,7 @@ fun McpServerEditorSheet(
                     Text("Sent as a bearer token to this server only, and stored encrypted.")
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = ContainerShape,
                 visualTransformation = if (tokenVisible) {
                     VisualTransformation.None
                 } else {
@@ -182,7 +183,7 @@ fun McpServerEditorSheet(
                         Text("Shown to the model so it can tell this server's tools from another's.")
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = ContainerShape,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -208,7 +209,7 @@ fun McpServerEditorSheet(
 private fun ProbeSuccess(probe: McpProbeResult.Success) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(14.dp),
+        shape = ContainerShape,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -283,7 +284,7 @@ private fun ToolPreviewRow(tool: McpToolDescriptor) {
 private fun ProbeFailure(message: String) {
     Surface(
         color = MaterialTheme.colorScheme.errorContainer,
-        shape = RoundedCornerShape(14.dp),
+        shape = ContainerShape,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -310,7 +311,7 @@ private fun ProbeFailure(message: String) {
 private fun StaleProbeNotice() {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(14.dp),
+        shape = ContainerShape,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(

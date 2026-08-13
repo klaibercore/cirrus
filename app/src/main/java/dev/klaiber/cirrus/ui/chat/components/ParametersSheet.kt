@@ -42,6 +42,7 @@ import dev.klaiber.cirrus.domain.model.GenerationParams
 import dev.klaiber.cirrus.domain.model.ThinkMode
 import dev.klaiber.cirrus.ui.components.HelpBadge
 import dev.klaiber.cirrus.ui.components.HelpTooltip
+import dev.klaiber.cirrus.ui.theme.ContainerShape
 
 /**
  * Full sampling control for the active conversation.
@@ -120,7 +121,7 @@ fun ParametersSheet(
                 value = systemPrompt.orEmpty(),
                 onValueChange = { onSystemPromptChange(it.takeIf { text -> text.isNotBlank() }) },
                 placeholder = { Text("Instructions applied to every turn") },
-                shape = RoundedCornerShape(14.dp),
+                shape = ContainerShape,
                 minLines = 3,
                 maxLines = 8,
                 modifier = Modifier.fillMaxWidth(),
@@ -253,7 +254,7 @@ fun ParametersSheet(
                     onParamsChange(params.copy(responseFormat = it.takeIf { text -> text.isNotBlank() }))
                 },
                 placeholder = { Text("\"json\" or a JSON schema object") },
-                shape = RoundedCornerShape(14.dp),
+                shape = ContainerShape,
                 minLines = 2,
                 maxLines = 8,
                 modifier = Modifier.fillMaxWidth(),
@@ -280,7 +281,7 @@ fun ParametersSheet(
                 },
                 placeholder = { Text("e.g. 10m, 1h, or 0 to unload immediately") },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = ContainerShape,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -370,7 +371,7 @@ private fun NumberField(
         trailingIcon = { HelpBadge(title = label, text = help) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        shape = RoundedCornerShape(14.dp),
+        shape = ContainerShape,
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 8.dp),
@@ -411,7 +412,7 @@ private fun StopSequenceEditor(sequences: List<String>, onChange: (List<String>)
             onValueChange = { draft = it },
             placeholder = { Text("Add a stop sequence, then press done") },
             singleLine = true,
-            shape = RoundedCornerShape(14.dp),
+            shape = ContainerShape,
             keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
             modifier = Modifier.fillMaxWidth(),
             trailingIcon = {

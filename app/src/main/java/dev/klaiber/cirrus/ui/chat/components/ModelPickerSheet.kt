@@ -42,6 +42,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -60,6 +61,11 @@ import dev.klaiber.cirrus.domain.model.ModelCapability
 import dev.klaiber.cirrus.domain.model.ModelFilter
 import dev.klaiber.cirrus.domain.model.ModelInfo
 import dev.klaiber.cirrus.ui.components.HelpBadge
+import dev.klaiber.cirrus.ui.components.OutlinedPanel
+import dev.klaiber.cirrus.ui.components.Tag
+import dev.klaiber.cirrus.ui.theme.LargeContainerShape
+import dev.klaiber.cirrus.ui.theme.LocalTagColors
+import dev.klaiber.cirrus.ui.theme.Pill
 
 /**
  * Model chooser.
@@ -129,9 +135,20 @@ fun ModelPickerSheet(
                 value = query,
                 onValueChange = { query = it },
                 placeholder = { Text("Filter models") },
-                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = Pill,
+                textStyle = MaterialTheme.typography.bodyMedium,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp),
@@ -144,21 +161,26 @@ fun ModelPickerSheet(
                     contentPadding = PaddingValues(horizontal = 20.dp),
                 ) {
                     items(availableFilters, key = { it.name }) { candidate ->
+                        // Selection inverts the pill to ink-on-white rather than tinting it. It is
+                        // the same "one black pill is the chosen thing" logic the rest of the
+                        // design runs on, and it survives having no accent colour to reach for.
                         FilterChip(
                             selected = filter == candidate,
                             onClick = { filter = candidate },
                             label = { Text(candidate.label) },
-                            leadingIcon = if (filter == candidate) {
-                                {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Check,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(FilterChipDefaults.IconSize),
-                                    )
-                                }
-                            } else {
-                                null
-                            },
+                            shape = Pill,
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = filter == candidate,
+                                borderColor = MaterialTheme.colorScheme.outline,
+                                selectedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
                         )
                     }
                 }
@@ -193,22 +215,28 @@ fun ModelPickerSheet(
     }
 }
 
+/**
+ * One model, laid out the way ollama.com lays out a model in its catalogue.
+ *
+ * Name and version on one line, the facts that decide the pick beneath it, capability tags last.
+ * Selection is carried by an ink-coloured border rather than by a tinted fill, so the tags keep
+ * their own colours on the selected card instead of being recoloured into a second state — which is
+ * what the old `selected` branch on every chip existed to work around.
+ */
 @Composable
 private fun ModelCard(model: ModelInfo, selected: Boolean, onClick: () -> Unit) {
-    Card(
+    OutlinedPanel(
         onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerLow
-            },
-        ),
-        border = if (selected) {
-            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+        shape = LargeContainerShape,
+        color = if (selected) {
+            MaterialTheme.colorScheme.surfaceContainerLow
         } else {
-            null
+            MaterialTheme.colorScheme.surface
+        },
+        borderColor = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.outlineVariant
         },
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -219,11 +247,7 @@ private fun ModelCard(model: ModelInfo, selected: Boolean, onClick: () -> Unit) 
                         Text(
                             text = model.baseName,
                             style = MaterialTheme.typography.titleMedium,
-                            color = if (selected) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         model.tag?.let { tag ->
                             Spacer(Modifier.size(6.dp))
@@ -251,7 +275,7 @@ private fun ModelCard(model: ModelInfo, selected: Boolean, onClick: () -> Unit) 
                     Icon(
                         imageVector = Icons.Outlined.Check,
                         contentDescription = "Selected",
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier
                             .padding(start = 4.dp)
                             .size(20.dp),
@@ -261,23 +285,18 @@ private fun ModelCard(model: ModelInfo, selected: Boolean, onClick: () -> Unit) 
 
             val badges = model.badges
             if (badges.isNotEmpty() || model.isCloudHosted) {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     if (model.isCloudHosted) {
-                        CapabilityChip(
-                            icon = Icons.Outlined.Cloud,
-                            label = "Cloud",
-                            selected = selected,
-                        )
+                        CapabilityTag(label = "cloud", palette = TagPalette.Violet)
                     }
                     badges.forEach { capability ->
-                        CapabilityChip(
-                            icon = capability.icon,
-                            label = capability.label,
-                            selected = selected,
+                        CapabilityTag(
+                            label = capability.label.lowercase(),
+                            palette = capability.palette,
                         )
                     }
                 }
@@ -313,45 +332,45 @@ private fun capabilitySummary(model: ModelInfo): String {
     return (lines + provenance).joinToString("\n\n")
 }
 
-@Composable
-private fun CapabilityChip(icon: ImageVector, label: String, selected: Boolean) {
-    val container: Color
-    val content: Color
-    if (selected) {
-        container = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-        content = MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        container = MaterialTheme.colorScheme.surfaceContainerHighest
-        content = MaterialTheme.colorScheme.onSurfaceVariant
-    }
+/** Which of the tinted pairs a capability draws from. */
+private enum class TagPalette { Cyan, Blue, Indigo, Violet, Neutral }
 
-    Surface(color = container, shape = RoundedCornerShape(8.dp)) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = content,
-                modifier = Modifier.size(13.dp),
-            )
-            Text(text = label, style = MaterialTheme.typography.labelSmall, color = content)
-        }
+/**
+ * A capability tag: lowercase, text only, tinted.
+ *
+ * No icon, which is a deliberate subtraction. ollama.com's capability tags are two or three
+ * lowercase words in a coloured wash and nothing else, and once four of them sit in a row under a
+ * model name the icons stop being scannable and start being texture. The word is the affordance.
+ */
+@Composable
+private fun CapabilityTag(label: String, palette: TagPalette) {
+    val tags = LocalTagColors.current
+    val (background, content) = when (palette) {
+        TagPalette.Cyan -> tags.cyanBackground to tags.cyanText
+        TagPalette.Blue -> tags.blueBackground to tags.blueText
+        TagPalette.Indigo -> tags.indigoBackground to tags.indigoText
+        TagPalette.Violet -> tags.violetBackground to tags.violetText
+        TagPalette.Neutral -> tags.neutralBackground to tags.neutralText
     }
+    Tag(label = label, background = background, contentColor = content)
 }
 
-private val ModelCapability.icon: ImageVector
+/**
+ * Colour follows meaning, and the assignments are the reference site's own: sight is cyan, tools
+ * blue, reasoning indigo. Anything without an established colour there stays neutral rather than
+ * being given one — a palette that assigns a hue to everything has stopped distinguishing anything.
+ */
+private val ModelCapability.palette: TagPalette
     get() = when (this) {
-        ModelCapability.COMPLETION -> Icons.Outlined.ChatBubbleOutline
-        ModelCapability.THINKING -> Icons.Outlined.Psychology
-        ModelCapability.VISION -> Icons.Outlined.Visibility
-        ModelCapability.TOOLS -> Icons.Outlined.Build
-        ModelCapability.AUDIO -> Icons.Outlined.GraphicEq
-        ModelCapability.IMAGE -> Icons.Outlined.Image
-        ModelCapability.EMBEDDING -> Icons.Outlined.Hub
-        ModelCapability.INSERT -> Icons.Outlined.Code
+        ModelCapability.VISION -> TagPalette.Cyan
+        ModelCapability.TOOLS -> TagPalette.Blue
+        ModelCapability.THINKING -> TagPalette.Indigo
+        ModelCapability.COMPLETION,
+        ModelCapability.AUDIO,
+        ModelCapability.IMAGE,
+        ModelCapability.EMBEDDING,
+        ModelCapability.INSERT,
+        -> TagPalette.Neutral
     }
 
 @Composable

@@ -43,7 +43,7 @@ app/src/main/java/dev/klaiber/cirrus/
 │   ├── voice/              # VoiceInput — SpeechRecognizer hoisted into Compose state
 │   ├── markdown/           # MarkdownParser, MarkdownInline, SyntaxHighlighter, CodeBlock
 │   │   └── math/           # LaTeX: MathParser → MathTypesetter → MathBox, plus MathSpeech
-│   └── theme/              # Color, Type, Theme (Material 3, dynamic color support)
+│   └── theme/              # Color, Type, Shape, Theme — the design system (see below)
 ├── domain/
 │   ├── ChatEngine.kt       # the turn protocol: build request → stream → service tool calls
 │   ├── SpeechController.kt # read-aloud: chunking, ElevenLabs or the device engine, playback
@@ -183,6 +183,40 @@ app/src/main/java/dev/klaiber/cirrus/
 - **Help text** lives next to the control it explains, via `HelpBadge`/`HelpTooltip`. If you add
   a setting or a parameter, it needs help copy — that is the whole point of the pattern.
 
+### The design system
+
+The interface follows ollama.com: a monochrome page, hairline borders instead of shadows, a full
+pill on anything pressable, and a rounded display face over the platform's own body face. Four
+rules, and holding to them is what keeps the app looking like one thing.
+
+- **Colour is monochrome by default.** `ui/theme/Color.kt` is one neutral ramp from `#FFFFFF` to
+  `#000000`, and `primary` is near-black rather than a hue — which is what makes a filled button
+  read as the reference design's black pill for free, since Material 3 buttons are already pills.
+  There is **no dynamic colour**: Material You derives a scheme from the wallpaper, which is
+  precisely destructive of a design that has committed to zero chroma. The setting was removed
+  rather than defaulted off, because the state it enabled was one where a screenshot of Cirrus is
+  unrecognisable as Cirrus.
+- **Colour that survives carries meaning**, and lives in `TagColors`, not the scheme: capability
+  tags on a model card (cyan/blue/indigo, the reference site's own assignments), hyperlinks, and
+  the search highlight. The last two are load-bearing rather than decorative — a link in `primary`
+  is now the same colour as the sentence around it, and a grey highlight on a grey ramp is
+  invisible. Reach for `LocalTagColors` for those three things and nothing else.
+- **Two radii, no ladder.** `Pill` for anything interactive, `ContainerShape` (12dp) or
+  `LargeContainerShape` (16dp) for anything holding content. `CirrusShapes` maps the Material scale
+  onto the same pair so untouched Material components land in the same language.
+- **Depth is a border, never a shadow.** Use `OutlinedPanel` rather than a filled `Surface` with
+  `shadowElevation`; use `Hairline` between rows and under the app bar. A filled panel is reserved
+  for the two cases where a border cannot do the job: the user's own message bubble, and a code
+  block (which takes both, because a near-black inset on a near-black page has no edge of its own).
+- **Type** is `DisplayFamily` (Nunito, bundled as a single 277KB variable font) for headings and
+  titles, and the platform sans for everything read at length — the reference site's split of
+  SF Pro Rounded over `system-ui`. Every style states `letterSpacing = 0.sp`, because Material's
+  default tracking on small labels is a surprising amount of why an interface reads as Android
+  rather than as the thing being copied.
+
+Shared parts live in `ui/components/Primitives.kt` (`OutlinedPanel`, `PillButton`, `Tag`,
+`Hairline`). Assemble a screen from those rather than styling a `Surface` by hand.
+
 ### Memory, agents and the tools switch
 
 The conversation's tools switch governs **external** tools only — web search, GitHub, MCP. Memory
@@ -277,6 +311,11 @@ Unit tests live in `app/src/test/java/...` mirroring the main package. Run with
 - Compose's `PlaceholderVerticalAlign.AboveBaseline` puts the *bottom* of an inline placeholder on
   the text baseline, so anything with a descender hangs below the line. Inline maths is made
   symmetric about the maths axis and aligned with `TextCenter` instead.
+- The launcher icon is a union of three discs over a stadium base, not a traced outline, because
+  the union keeps its bumps even at 48dp. A stroked outline was tried — closer to the reference's
+  drawn mascot — and abandoned: eroding a union of discs to cut the inner counter leaves ink
+  slivers wherever two discs meet shallowly. `ic_notification.xml` shares the same viewport and
+  path data on purpose; the two had already drifted into different shapes once.
 - The billows of the launcher icon are deliberately narrower than its base. Lining their outer
   edges up exactly puts a visible dent in each side of the cloud where the two arcs cross.
 - A stream that ends without a chunk carrying `done` is **truncated, not finished**

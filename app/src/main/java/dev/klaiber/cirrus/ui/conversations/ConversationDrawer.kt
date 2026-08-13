@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Inventory2
@@ -36,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.klaiber.cirrus.domain.model.ConversationSummary
+import dev.klaiber.cirrus.ui.theme.ContainerShape
+import dev.klaiber.cirrus.ui.theme.Pill
 import dev.klaiber.cirrus.ui.util.bucketFor
 
 /**
@@ -71,14 +75,26 @@ fun ConversationDrawer(
     var renameTarget by remember { mutableStateOf<ConversationSummary?>(null) }
     var deleteTarget by remember { mutableStateOf<ConversationSummary?>(null) }
 
-    ModalDrawerSheet(drawerShape = RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp)) {
+    ModalDrawerSheet(
+        drawerShape = RoundedCornerShape(0.dp, 16.dp, 16.dp, 0.dp),
+        drawerContainerColor = MaterialTheme.colorScheme.surface,
+    ) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 8.dp, top = 16.dp, bottom = 8.dp),
+                    .padding(start = 20.dp, end = 8.dp, top = 16.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // The wordmark, set the way the reference site sets its own: mark, then name in
+                // the rounded display face, at the top-left of everything.
+                Icon(
+                    imageVector = Icons.Outlined.Cloud,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(10.dp))
                 Text(
                     text = "Cirrus",
                     style = MaterialTheme.typography.titleLarge,
@@ -104,19 +120,33 @@ fun ConversationDrawer(
                 }
             }
 
+            // A pill, like every search field on the reference site. The border is the light
+            // `outline` step rather than Material's accent-on-focus, so the field does not change
+            // colour the moment the keyboard opens.
             OutlinedTextField(
                 value = state.query,
                 onValueChange = viewModel::onQueryChange,
                 placeholder = { Text("Search conversations") },
-                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = Pill,
+                textStyle = MaterialTheme.typography.bodyMedium,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
 
             if (state.conversations.isEmpty()) {
                 EmptyDrawerState(
@@ -254,9 +284,9 @@ private fun ConversationList(
 private fun SectionHeader(label: String) {
     Text(
         text = label,
-        style = MaterialTheme.typography.labelSmall,
+        style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 12.dp, top = 14.dp, bottom = 6.dp),
+        modifier = Modifier.padding(start = 12.dp, top = 18.dp, bottom = 6.dp),
     )
 }
 
@@ -272,13 +302,16 @@ private fun ConversationRow(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
+    // Selection is a half-step change of background and nothing else — no accent, no border, no
+    // leading bar. On a monochrome ramp that step is quiet but unambiguous, which is the right
+    // weight for "this is the thread you are already looking at".
     Surface(
         color = if (selected) {
-            MaterialTheme.colorScheme.secondaryContainer
+            MaterialTheme.colorScheme.surfaceContainer
         } else {
             MaterialTheme.colorScheme.surface
         },
-        shape = RoundedCornerShape(12.dp),
+        shape = ContainerShape,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 1.dp),
@@ -295,7 +328,7 @@ private fun ConversationRow(
                         Icon(
                             imageVector = Icons.Outlined.PushPin,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(13.dp),
                         )
                         Spacer(Modifier.width(5.dp))
@@ -396,7 +429,7 @@ private fun RenameDialog(
                 value = title,
                 onValueChange = { title = it },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = ContainerShape,
                 modifier = Modifier.fillMaxWidth(),
             )
         },
