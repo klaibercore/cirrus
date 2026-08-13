@@ -326,12 +326,14 @@ private fun AgentCard(
 
             agent.lastRunAt?.let { lastRun ->
                 Spacer(Modifier.height(10.dp))
+                // Clickable overload rather than a clickable modifier: `Surface` clips content to
+                // its shape, so a ripple attached outside that clip squares off the corners.
                 Surface(
+                    onClick = onOpenRun,
+                    enabled = agent.lastConversationId != null,
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     shape = ContainerShape,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = agent.lastConversationId != null, onClick = onOpenRun),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Row(
                         modifier = Modifier.padding(10.dp),

@@ -240,6 +240,19 @@ class ToolRegistry @Inject constructor(
         }
 
         if (!externalTools) return null
+
+        // GitHub carries two gates of its own beyond the external switch, and both have to be asked
+        // here as well as when the schemas are built — `staticTools` holds every GitHub tool
+        // unconditionally, so falling through to it would resolve one that was never offered: with
+        // the feature switched off, or with no token at all, or a write while writes are refused.
+        // The client refuses a write of its own accord, but a *read* would have gone out with the
+        // user's token attached against a setting that says not to.
+        gitHubTools.all.firstOrNull { it.name == name }?.let { tool ->
+            if (!gitHubEnabled) return null
+            if (tool in gitHubTools.writeTools && !gitHubCredentials.writesAllowed) return null
+            return tool
+        }
+
         return staticTools[name] ?: mcpTools.find(name)
     }
 

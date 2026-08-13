@@ -53,9 +53,9 @@ class MemoryRepository @Inject constructor(
         val now = System.currentTimeMillis()
 
         if (existing != null) {
-            // The newer phrasing wins, and being told again is evidence the fact is real.
+            // Being told again is evidence the fact is real, so confidence rises either way.
             val merged = existing.copy(
-                content = text,
+                content = mergedContent(existing.content, text),
                 kind = kind,
                 updatedAt = now,
                 pinned = existing.pinned || pinned,
@@ -118,6 +118,30 @@ class MemoryRepository @Inject constructor(
     suspend fun deleteAll() = dao.deleteAll()
 
     suspend fun byId(id: String): Memory? = dao.byId(id)?.let(::toDomain)
+
+    /**
+     * Which of two wordings for the same fact to keep.
+     *
+     * A fold used to take the incoming text unconditionally, on the grounds that the newer phrasing
+     * wins. That is wrong in one direction, and the direction it is wrong in is the common one:
+     * [findNearDuplicate] scores overlap as a share of the *shorter* memory's terms, so a brief
+     * restatement always matches a detailed original — every term of "prefers Kotlin" appears in
+     * "prefers Kotlin over Java for Android work". Treating them as one memory is right. Letting
+     * the brief one overwrite the other deleted the qualifier, and since a fold updates the row in
+     * place there was no route back to it.
+     *
+     * So the incoming text wins only when it carries a term the stored wording does not already
+     * have — which is what a rephrasing or a correction looks like, and what a pure restatement
+     * never does. The known limit is a correction made only by *dropping* words ("prefers Java",
+     * against a memory that already mentions Java): that reads as a restatement and is kept out.
+     * Memories are editable on the memory screen, and losing a correction the user can redo beats
+     * silently deleting detail they cannot.
+     */
+    private fun mergedContent(existing: String, incoming: String): String {
+        val known = MemoryRetriever.tokenize(existing)
+        val offered = MemoryRetriever.tokenize(incoming)
+        return if (offered.any { it !in known }) incoming else existing
+    }
 
     /**
      * An existing memory saying substantially the same thing.

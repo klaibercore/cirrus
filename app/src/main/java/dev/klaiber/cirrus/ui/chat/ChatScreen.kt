@@ -575,11 +575,13 @@ private fun JumpToLatestButton(isGenerating: Boolean, onClick: () -> Unit) {
     // running text, and an outlined pill on a transparent fill would let the transcript show
     // through it. `inverseSurface` is the far end of the neutral ramp, so it separates on contrast
     // alone — which is exactly how the reference design gets depth without a shadow.
+    // The clickable overload: `Surface` clips its content to the shape, so a `clickable` on the
+    // modifier we hand it would paint a rectangular ripple across the pill's ends.
     Surface(
+        onClick = onClick,
         color = MaterialTheme.colorScheme.inverseSurface,
         contentColor = MaterialTheme.colorScheme.inverseOnSurface,
         shape = Pill,
-        modifier = Modifier.clickable(onClick = onClick),
     ) {
         Row(
             modifier = Modifier

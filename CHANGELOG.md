@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A GitHub tool could run when it was never offered.** The registry decides what to show the model
+  and, separately, what may actually run when the model names something anyway — from an earlier
+  turn of the same thread, or a guess. The second check asked about the conversation's tools switch
+  but not about GitHub's own two gates, so a model naming `github_list_repos` reached GitHub with
+  your token attached even with the feature switched off, or with no token configured at all.
+  Writes were already refused by the client itself; reads were not.
+- **A brief restatement could delete a detailed memory.** Duplicate detection scores overlap as a
+  share of the shorter memory's terms, so "prefers Kotlin" always matches "prefers Kotlin over Java
+  for Android work" — correctly, they are one memory. But the incoming wording then overwrote the
+  stored one in place, silently dropping the qualifier with no way back. A fold now keeps the
+  stored wording unless the new one actually adds something.
+- **Ripples were square on rounded controls.** Several bordered cards and pill buttons attached
+  their click handling outside the surface that clips to the shape, so pressing one painted a
+  rectangle across its corners.
 
 ## [1.3.0] - 2026-08-13
 

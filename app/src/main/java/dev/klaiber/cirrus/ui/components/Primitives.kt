@@ -55,13 +55,29 @@ fun OutlinedPanel(
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    Surface(
-        color = color,
-        shape = shape,
-        border = BorderStroke(HairlineWidth, borderColor),
-        modifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier,
-        content = content,
-    )
+    val border = BorderStroke(HairlineWidth, borderColor)
+    // Two calls rather than one with a conditional `Modifier.clickable`, and the difference is
+    // visible: `Surface` clips its *content* to the shape, so a `clickable` attached to the modifier
+    // we pass in sits outside that clip and paints a rectangular ripple over a rounded card. The
+    // clickable overload puts the indication inside, where the corners apply.
+    if (onClick != null) {
+        Surface(
+            onClick = onClick,
+            color = color,
+            shape = shape,
+            border = border,
+            modifier = modifier,
+            content = content,
+        )
+    } else {
+        Surface(
+            color = color,
+            shape = shape,
+            border = border,
+            modifier = modifier,
+            content = content,
+        )
+    }
 }
 
 /** How much visual weight a [PillButton] claims. */
@@ -108,7 +124,12 @@ fun PillButton(
     // "disabled grey" is indistinguishable from an enabled one two steps along the ramp.
     val alpha = if (enabled) 1f else 0.38f
 
+    // The clickable overload, so the ripple is clipped to the pill rather than painted as a
+    // rectangle across its corners. `enabled` is passed through rather than swapping the modifier,
+    // which also keeps the disabled button out of the accessibility tree's clickable set.
     Surface(
+        onClick = onClick,
+        enabled = enabled,
         color = container.copy(alpha = container.alpha * alpha),
         contentColor = content.copy(alpha = alpha),
         shape = Pill,
@@ -117,9 +138,7 @@ fun PillButton(
         } else {
             null
         },
-        modifier = modifier.then(
-            if (enabled) Modifier.clickable(onClick = onClick) else Modifier,
-        ),
+        modifier = modifier,
     ) {
         Row(
             modifier = Modifier
