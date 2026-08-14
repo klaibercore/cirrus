@@ -28,12 +28,21 @@ data class Agent(
     /** First line or so of the last answer, for the list row. */
     val lastSummary: String?,
     val lastConversationId: String?,
+    /**
+     * How many of this agent's threads to keep.
+     *
+     * An agent that runs daily writes 365 threads a year, and the 300th is of no interest to
+     * anybody. Older ones are deleted after each run — except any that have been replied to, which
+     * stop being runs at that moment and become ordinary conversations.
+     */
+    val keepRuns: Int = DEFAULT_KEEP_RUNS,
 ) {
-    val scheduleLabel: String
-        get() {
-            val time = "%02d:%02d".format(minuteOfDay / 60, minuteOfDay % 60)
-            return "$time · ${daysLabel()}"
-        }
+    val timeLabel: String get() = "%02d:%02d".format(minuteOfDay / 60, minuteOfDay % 60)
+
+    val scheduleLabel: String get() = "$timeLabel · ${daysLabel()}"
+
+    /** True while the agent is switched on and has a day to run on. */
+    val isScheduled: Boolean get() = enabled && days.isNotEmpty()
 
     private fun daysLabel(): String = when {
         days.size == 7 -> "every day"
@@ -46,6 +55,9 @@ data class Agent(
     }
 
     companion object {
+        /** Enough to see a pattern in the last week or two, few enough to never be a list. */
+        const val DEFAULT_KEEP_RUNS = 10
+
         val WEEKDAYS = setOf(
             DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
             DayOfWeek.THURSDAY, DayOfWeek.FRIDAY,
@@ -62,3 +74,32 @@ data class Agent(
 }
 
 enum class AgentRunStatus { RUNNING, SUCCEEDED, FAILED }
+
+/** What set a run going. A failure you caused by tapping "run now" reads differently from one at 3am. */
+enum class AgentRunTrigger { SCHEDULED, MANUAL }
+
+/**
+ * One attempt at running an agent.
+ *
+ * The agent row only remembers the latest attempt, and one column cannot tell "it worked this
+ * morning" apart from "it has failed every morning this week". The second is the only one worth
+ * being told about, so every attempt is written down.
+ */
+data class AgentRun(
+    val id: String,
+    val agentId: String,
+    /** Null once the thread it wrote has been deleted; the run itself still happened. */
+    val conversationId: String?,
+    val startedAt: Long,
+    val finishedAt: Long?,
+    val status: AgentRunStatus,
+    val trigger: AgentRunTrigger,
+    val summary: String?,
+    val errorMessage: String?,
+    val toolCalls: Int,
+    val tokens: Int?,
+) {
+    val durationMs: Long? get() = finishedAt?.let { it - startedAt }
+
+    val isRunning: Boolean get() = status == AgentRunStatus.RUNNING && finishedAt == null
+}

@@ -2,6 +2,7 @@ package dev.klaiber.cirrus.domain.agents
 
 import android.content.Context
 import androidx.hilt.work.HiltWorker
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -15,6 +16,8 @@ import dagger.assisted.AssistedInject
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.klaiber.cirrus.data.repository.AgentRepository
 import dev.klaiber.cirrus.domain.model.Agent
+import dev.klaiber.cirrus.domain.model.AgentRunTrigger
+import kotlinx.coroutines.CancellationException
 import java.time.DayOfWeek
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -36,22 +39,38 @@ class AgentScheduler @Inject constructor(
     private val agents: AgentRepository,
 ) {
 
-    /** Called at startup and whenever an agent changes, so the queue always matches the store. */
+    /**
+     * Called at startup and whenever an agent changes, so the queue always matches the store.
+     *
+     * It also cancels what should no longer fire. `pruneWork` only discards work that has already
+     * finished, so an agent switched off while the app was dead used to keep its booking and run
+     * anyway — the one failure mode where a switch marked "off" does the thing anyway.
+     */
     suspend fun syncAll() {
-        val enabled = agents.enabled()
-        enabled.forEach(::schedule)
-        // Anything disabled or deleted since the last sync is cancelled by tag sweep below.
-        WorkManager.getInstance(context).pruneWork()
+        val manager = WorkManager.getInstance(context)
+        agents.all().forEach { agent ->
+            if (agent.isScheduled) schedule(agent) else manager.cancelUniqueWork(workName(agent.id))
+        }
+        // Runs that were killed rather than finished — by a reboot, or by the platform reclaiming
+        // the app mid-generation — are still marked as in progress. Close them out, or the agents
+        // screen shows a spinner for something that stopped days ago.
+        agents.failInterruptedRuns(System.currentTimeMillis() - STALE_RUN_MS)
+        manager.pruneWork()
     }
 
     fun schedule(agent: Agent) {
         val manager = WorkManager.getInstance(context)
-        if (!agent.enabled || agent.days.isEmpty()) {
+        if (!agent.isScheduled) {
             manager.cancelUniqueWork(workName(agent.id))
             return
         }
 
         val delay = delayUntilNextRun(agent)
+        if (delay == Long.MAX_VALUE) {
+            manager.cancelUniqueWork(workName(agent.id))
+            return
+        }
+
         val request = OneTimeWorkRequestBuilder<AgentWorker>()
             .setInitialDelay(delay, TimeUnit.MILLISECONDS)
             .setInputData(Data.Builder().putString(KEY_AGENT_ID, agent.id).build())
@@ -59,6 +78,7 @@ class AgentScheduler @Inject constructor(
             .setConstraints(
                 Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
             )
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_SECONDS, TimeUnit.SECONDS)
             .addTag(TAG)
             .build()
 
@@ -81,13 +101,22 @@ class AgentScheduler @Inject constructor(
             .addTag(TAG)
             .build()
         WorkManager.getInstance(context)
-            .enqueueUniqueWork(manualName(agentId), ExistingWorkPolicy.REPLACE, request)
+            // KEEP, not REPLACE: tapping "run now" twice means someone is impatient, not that they
+            // want the first run cancelled halfway and started again.
+            .enqueueUniqueWork(manualName(agentId), ExistingWorkPolicy.KEEP, request)
     }
 
     companion object {
         const val KEY_AGENT_ID = "agentId"
         const val KEY_MANUAL = "manual"
         const val TAG = "cirrus-agent"
+
+        /** Two quick attempts is the whole retry budget; see [AgentWorker]. */
+        const val MAX_ATTEMPTS = 3
+        private const val BACKOFF_SECONDS = 30L
+
+        /** Longer than any run can legitimately take, including its own timeout and retries. */
+        private const val STALE_RUN_MS = 30L * 60 * 1000
 
         fun workName(agentId: String) = "agent-$agentId"
 
@@ -119,6 +148,18 @@ class AgentScheduler @Inject constructor(
             return Long.MAX_VALUE
         }
 
+        /** When this agent next runs, as a wall-clock instant, or null if it never does. */
+        fun nextRunAt(
+            agent: Agent,
+            now: LocalDateTime = LocalDateTime.now(),
+            zone: ZoneId = ZoneId.systemDefault(),
+        ): Long? {
+            if (!agent.isScheduled) return null
+            val delay = delayUntilNextRun(agent, now, zone)
+            if (delay == Long.MAX_VALUE) return null
+            return now.atZone(zone).toInstant().toEpochMilli() + delay
+        }
+
         private const val DAYS_AHEAD = 8
     }
 }
@@ -142,17 +183,38 @@ class AgentWorker @AssistedInject constructor(
         val agentId = inputData.getString(AgentScheduler.KEY_AGENT_ID) ?: return Result.failure()
         val manual = inputData.getBoolean(AgentScheduler.KEY_MANUAL, false)
 
-        return try {
-            runner.run(agentId)
-            Result.success()
+        val outcome = try {
+            runner.run(
+                agentId = agentId,
+                trigger = if (manual) AgentRunTrigger.MANUAL else AgentRunTrigger.SCHEDULED,
+            )
+        } catch (stopped: CancellationException) {
+            throw stopped
         } catch (error: Throwable) {
-            // Retrying a whole generation on a transient failure would double the cost of a bad
-            // night; the failure is already recorded on the agent for the user to see.
-            Result.failure()
-        } finally {
-            if (!manual) {
-                agents.byId(agentId)?.let(scheduler::schedule)
-            }
+            // Nothing should reach here — the runner records its own failures — but an exception
+            // escaping this method skips the re-booking below, and an agent that stops being
+            // scheduled because of one bad morning is the failure this whole file exists to avoid.
+            AgentRunner.Outcome.Failed(error.message ?: "The run failed unexpectedly.")
+        }
+
+        // A dropped socket at 07:30 used to mean no briefing that day: every failure was final.
+        // Two more attempts, thirty seconds apart, costs nothing when the network is simply back —
+        // and a rejected key is deliberately *not* retryable, because burning three generations to
+        // rediscover that the key is still wrong helps nobody.
+        val retrying = outcome is AgentRunner.Outcome.Retryable &&
+            runAttemptCount < AgentScheduler.MAX_ATTEMPTS - 1
+
+        // Re-booking uses the same unique work name as the retry chain, so doing it now would
+        // cancel the very retry we just asked for.
+        if (!manual && !retrying) {
+            agents.byId(agentId)?.let(scheduler::schedule)
+        }
+
+        return when {
+            retrying -> Result.retry()
+            outcome is AgentRunner.Outcome.Finished -> Result.success()
+            // The failure is already recorded on the agent, and on the run, for the user to see.
+            else -> Result.failure()
         }
     }
 }

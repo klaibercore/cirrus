@@ -81,11 +81,19 @@ class SettingsRepository @Inject constructor(
                 if (encrypted != null) prefs[Keys.API_KEY] = encrypted else prefs.remove(Keys.API_KEY)
             }
         }
+        // Applied here as well as by the collector above, and that is not belt and braces: the
+        // mirror runs on the application scope, so "save the key, then test it" — which is exactly
+        // what the setup wizard does — would otherwise race its own write and test the old one.
+        credentials.update(trimmed.takeIf { it.isNotEmpty() }, credentials.baseUrl)
     }
 
     suspend fun clearApiKey() = setApiKey("")
 
-    suspend fun setBaseUrl(url: String) = edit { it[Keys.BASE_URL] = ApiCredentials.normalizeBaseUrl(url) }
+    suspend fun setBaseUrl(url: String) {
+        val normalized = ApiCredentials.normalizeBaseUrl(url)
+        edit { it[Keys.BASE_URL] = normalized }
+        credentials.update(credentials.apiKey, normalized)
+    }
 
     suspend fun setDefaultModel(model: String) = edit { it[Keys.DEFAULT_MODEL] = model }
 
@@ -196,6 +204,14 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setLastConsolidationAt(at: Long) = edit { it[Keys.LAST_CONSOLIDATION] = at }
 
+    suspend fun setOnboardingCompleted(completed: Boolean) = edit {
+        it[Keys.ONBOARDING_DONE] = completed
+    }
+
+    suspend fun setShowStarterPrompts(enabled: Boolean) = edit {
+        it[Keys.STARTER_PROMPTS] = enabled
+    }
+
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         dataStore.edit(block)
     }
@@ -237,6 +253,11 @@ class SettingsRepository @Inject constructor(
         memoryConsolidationEnabled = this[Keys.CONSOLIDATION_ENABLED] ?: true,
         memoryConsolidationHour = this[Keys.CONSOLIDATION_HOUR] ?: 3,
         lastConsolidationAt = this[Keys.LAST_CONSOLIDATION] ?: 0L,
+        // A key or a chosen model is proof enough that setup already happened, which is what keeps
+        // the wizard from ambushing everyone who upgrades into the version that introduced it.
+        onboardingCompleted = this[Keys.ONBOARDING_DONE]
+            ?: (this[Keys.API_KEY] != null || !this[Keys.DEFAULT_MODEL].isNullOrBlank()),
+        showStarterPrompts = this[Keys.STARTER_PROMPTS] ?: true,
     )
 
     private object Keys {
@@ -270,5 +291,7 @@ class SettingsRepository @Inject constructor(
         val CONSOLIDATION_ENABLED = booleanPreferencesKey("consolidation_enabled")
         val CONSOLIDATION_HOUR = intPreferencesKey("consolidation_hour")
         val LAST_CONSOLIDATION = longPreferencesKey("last_consolidation")
+        val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+        val STARTER_PROMPTS = booleanPreferencesKey("starter_prompts")
     }
 }

@@ -1,5 +1,6 @@
 package dev.klaiber.cirrus.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -12,6 +13,7 @@ import androidx.room.Relation
     indices = [
         Index("updatedAt"),
         Index("archived"),
+        Index("agentId"),
     ],
 )
 data class ConversationEntity(
@@ -33,6 +35,13 @@ data class ConversationEntity(
      * hand or still the placeholder — and auto-titling must leave it alone.
      */
     val autoTitledAt: Long?,
+    /**
+     * The agent that wrote this thread, if any.
+     *
+     * Non-null means the thread was produced by a scheduled run and belongs on the agent's own
+     * screen rather than in the drawer. Indexed because every drawer query filters on it.
+     */
+    val agentId: String?,
 )
 
 @Entity(
@@ -141,6 +150,58 @@ data class AgentEntity(
     val lastStatus: String?,
     val lastSummary: String?,
     val lastConversationId: String?,
+    /**
+     * How many finished runs to keep. Older threads are deleted after each run.
+     *
+     * The default is declared here as well as in the migration so both sides of Room's schema
+     * check agree: a column added with a default that the entity does not know about is the kind
+     * of mismatch that only shows up as a crash on someone else's upgrade.
+     */
+    @ColumnInfo(defaultValue = "10")
+    val keepRuns: Int,
+)
+
+/**
+ * One attempt at running an agent.
+ *
+ * Kept apart from the agent row, which only ever remembers the latest attempt: "it worked this
+ * morning" and "it has failed every morning this week" look identical from a single column, and the
+ * second is the only one worth being told about.
+ *
+ * The link to the conversation is `SET NULL` rather than `CASCADE`: deleting the thread an agent
+ * wrote should lose the text, not the record that the agent ran at all.
+ */
+@Entity(
+    tableName = "agent_runs",
+    foreignKeys = [
+        ForeignKey(
+            entity = AgentEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["agentId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ConversationEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["conversationId"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
+    indices = [Index(value = ["agentId", "startedAt"]), Index("conversationId")],
+)
+data class AgentRunEntity(
+    @PrimaryKey val id: String,
+    val agentId: String,
+    val conversationId: String?,
+    val startedAt: Long,
+    val finishedAt: Long?,
+    val status: String,
+    /** SCHEDULED or MANUAL — a failure you caused by tapping "run now" reads differently. */
+    val trigger: String,
+    val summary: String?,
+    val errorMessage: String?,
+    val toolCalls: Int,
+    val tokens: Int?,
 )
 
 data class MessageWithAttachments(

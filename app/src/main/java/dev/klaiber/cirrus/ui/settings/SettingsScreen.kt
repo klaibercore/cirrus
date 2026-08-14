@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Visibility
@@ -91,6 +92,7 @@ fun SettingsScreen(
     onOpenSection: (SettingsSection) -> Unit,
     onOpenMemory: () -> Unit,
     onOpenAgents: () -> Unit,
+    onRunSetup: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -164,6 +166,18 @@ fun SettingsScreen(
                         onClick = { onOpenSection(section) },
                     )
                 }
+            }
+
+            SectionLabel("Getting set up")
+            HubCard {
+                // The wizard is where the connection is proved rather than merely typed, which
+                // makes it the right answer to "it stopped working" as well as to "I am new here".
+                HubRow(
+                    icon = Icons.Outlined.AutoAwesome,
+                    title = "Run setup again",
+                    summary = "Walk through the host, key and model, and test the connection",
+                    onClick = onRunSetup,
+                )
             }
 
             Spacer(Modifier.height(24.dp))
@@ -388,6 +402,16 @@ fun SettingsSectionScreen(
                         "Rename a thread yourself and it is never overwritten.",
                     checked = state.settings.autoTitleConversations,
                     onCheckedChange = viewModel::setAutoTitle,
+                )
+                SwitchRow(
+                    title = "Suggested openers",
+                    subtitle = "Four things to try on an empty conversation",
+                    help = "A blank composer asks a question it does not answer. The suggestions " +
+                        "are matched to what you have switched on — nothing offers to read your " +
+                        "repositories unless a GitHub token is configured. Turn them off once " +
+                        "you know what you want to type.",
+                    checked = state.settings.showStarterPrompts,
+                    onCheckedChange = viewModel::setShowStarterPrompts,
                 )
                 SwitchRow(
                     title = "Send on enter",

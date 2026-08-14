@@ -66,4 +66,14 @@ data class AppSettings(
     /** Local hour at which that pass runs. Late enough to be asleep, early enough to be charged. */
     val memoryConsolidationHour: Int = 3,
     val lastConsolidationAt: Long = 0L,
+    /**
+     * Whether the first-run wizard has been through.
+     *
+     * Read defensively rather than as a plain flag: anyone who already had a key or a model when
+     * this shipped has plainly finished setting up, and showing them a welcome screen on the next
+     * launch would be the worst possible reward for having been an early user.
+     */
+    val onboardingCompleted: Boolean = false,
+    /** Suggested openers on an empty chat. Off for people who know what they want to type. */
+    val showStarterPrompts: Boolean = true,
 )

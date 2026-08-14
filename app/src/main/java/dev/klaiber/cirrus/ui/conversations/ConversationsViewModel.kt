@@ -3,6 +3,7 @@ package dev.klaiber.cirrus.ui.conversations
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.klaiber.cirrus.data.repository.AgentRepository
 import dev.klaiber.cirrus.data.repository.ConversationRepository
 import dev.klaiber.cirrus.domain.model.ConversationSummary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -21,12 +22,15 @@ data class ConversationsUiState(
     val query: String = "",
     val showArchived: Boolean = false,
     val conversations: List<ConversationSummary> = emptyList(),
+    /** Shown beside the drawer's agents row, so a schedule is visible without going looking. */
+    val agentCount: Int = 0,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class ConversationsViewModel @Inject constructor(
     private val repository: ConversationRepository,
+    agents: AgentRepository,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
@@ -49,8 +53,9 @@ class ConversationsViewModel @Inject constructor(
         query,
         showArchived,
         results,
-    ) { text, archived, conversations ->
-        ConversationsUiState(text, archived, conversations)
+        agents.agents,
+    ) { text, archived, conversations, agentList ->
+        ConversationsUiState(text, archived, conversations, agentList.count { it.enabled })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConversationsUiState())
 
     fun onQueryChange(value: String) {

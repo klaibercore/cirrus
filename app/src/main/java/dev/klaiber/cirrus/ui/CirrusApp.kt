@@ -6,6 +6,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -18,6 +19,7 @@ import dev.klaiber.cirrus.ui.chat.ChatScreen
 import dev.klaiber.cirrus.ui.conversations.ConversationDrawer
 import dev.klaiber.cirrus.ui.agents.AgentsScreen
 import dev.klaiber.cirrus.ui.memory.MemoryScreen
+import dev.klaiber.cirrus.ui.onboarding.OnboardingScreen
 import dev.klaiber.cirrus.ui.settings.SettingsScreen
 import dev.klaiber.cirrus.ui.settings.SettingsSection
 import dev.klaiber.cirrus.ui.settings.SettingsSectionScreen
@@ -42,13 +44,23 @@ private object Routes {
     const val MCP_SERVERS = "settings/mcp"
     const val MEMORY = "memory"
     const val AGENTS = "agents"
+    const val SETUP = "setup"
 }
 
 @Composable
-fun CirrusApp(sharedPayload: SharedPayload = SharedPayload()) {
+fun CirrusApp(
+    sharedPayload: SharedPayload = SharedPayload(),
+    startWithSetup: Boolean = false,
+) {
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    // Frozen at first composition. Finishing the wizard flips the setting that produced it, and a
+    // start destination that changed underneath a live NavHost would rebuild the graph mid-navigation.
+    val startDestination = remember {
+        if (startWithSetup) Routes.SETUP else Routes.CHAT_PATTERN
+    }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -73,13 +85,34 @@ fun CirrusApp(sharedPayload: SharedPayload = SharedPayload()) {
                     scope.launch { drawerState.close() }
                     navController.navigate(Routes.SETTINGS)
                 },
+                onOpenAgents = {
+                    scope.launch { drawerState.close() }
+                    navController.navigate(Routes.AGENTS)
+                },
+                onOpenMemory = {
+                    scope.launch { drawerState.close() }
+                    navController.navigate(Routes.MEMORY)
+                },
             )
         },
     ) {
         NavHost(
             navController = navController,
-            startDestination = Routes.CHAT_PATTERN,
+            startDestination = startDestination,
         ) {
+            // Finishing setup clears the stack rather than adding to it: nobody should be able to
+            // press Back into a wizard they have already been through — and the same route is
+            // reachable from Settings, where the stack underneath it is a different shape.
+            composable(Routes.SETUP) {
+                OnboardingScreen(
+                    onFinished = {
+                        navController.navigate(Routes.CHAT) {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                        }
+                    },
+                )
+            }
+
             composable(
                 route = Routes.CHAT_PATTERN,
                 arguments = listOf(
@@ -107,6 +140,7 @@ fun CirrusApp(sharedPayload: SharedPayload = SharedPayload()) {
                     },
                     onOpenMemory = { navController.navigate(Routes.MEMORY) },
                     onOpenAgents = { navController.navigate(Routes.AGENTS) },
+                    onRunSetup = { navController.navigate(Routes.SETUP) },
                 )
             }
 

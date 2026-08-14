@@ -7,10 +7,15 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
+import dev.klaiber.cirrus.domain.model.ThemeMode
 import dev.klaiber.cirrus.ui.CirrusApp
 import dev.klaiber.cirrus.ui.SharedPayload
 import dev.klaiber.cirrus.ui.theme.CirrusTheme
@@ -28,8 +33,20 @@ class MainActivity : ComponentActivity() {
             val viewModel: MainViewModel = hiltViewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
 
-            CirrusTheme(themeMode = settings.themeMode) {
-                CirrusApp(sharedPayload = sharedPayload)
+            // The theme is drawn from the moment there is a window; only the navigation graph waits
+            // for the store, because where it starts depends on whether setup has happened.
+            CirrusTheme(themeMode = settings?.themeMode ?: ThemeMode.SYSTEM) {
+                Surface(
+                    color = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    settings?.let { loaded ->
+                        CirrusApp(
+                            sharedPayload = sharedPayload,
+                            startWithSetup = !loaded.onboardingCompleted,
+                        )
+                    }
+                }
             }
         }
     }

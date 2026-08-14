@@ -19,8 +19,18 @@ data class Conversation(
      * or still the placeholder — and auto-titling must not touch it.
      */
     val autoTitledAt: Long? = null,
+    /**
+     * The agent that wrote this thread, if it was written by one.
+     *
+     * Non-null keeps the thread out of the drawer and under its agent instead. Replying to it
+     * detaches it — see `ConversationRepository.detachFromAgent`.
+     */
+    val agentId: String? = null,
 ) {
     val isFork: Boolean get() = forkedFromConversationId != null
+
+    /** True while this thread is still an agent's output rather than a conversation. */
+    val isAgentRun: Boolean get() = agentId != null
 
     /** True while the thread still carries the placeholder name rather than one of its own. */
     val isUntitled: Boolean get() = title == DEFAULT_TITLE

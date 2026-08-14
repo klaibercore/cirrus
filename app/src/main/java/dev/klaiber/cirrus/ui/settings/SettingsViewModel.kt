@@ -190,6 +190,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setSendOnEnter(enabled) }
     }
 
+    fun setShowStarterPrompts(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setShowStarterPrompts(enabled) }
+    }
+
     fun saveGitHubToken(token: String) {
         viewModelScope.launch { settingsRepository.setGitHubToken(token) }
     }

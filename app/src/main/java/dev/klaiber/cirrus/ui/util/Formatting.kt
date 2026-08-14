@@ -58,6 +58,53 @@ fun formatBytes(bytes: Long): String = when {
 }
 
 /**
+ * When something next happens, said the way a person would say it.
+ *
+ * "in 15 hours" is arithmetic; "tomorrow at 07:30" is an answer. The two disagree constantly —
+ * anything scheduled for the morning is always some awkward number of hours away — and the clock
+ * time is the half people check a schedule for.
+ */
+fun formatWhen(epochMillis: Long, now: Long = System.currentTimeMillis()): String {
+    val minutes = (epochMillis - now) / 60_000
+    if (minutes < 1) return "any moment"
+    if (minutes < 60) return "in $minutes min"
+
+    val clock = formatTime(epochMillis)
+    val days = calendarDaysBetween(now, epochMillis)
+    return when {
+        days <= 0L -> "today at $clock"
+        days == 1L -> "tomorrow at $clock"
+        days < 7L -> "${SimpleDateFormat("EEEE", Locale.getDefault()).format(Date(epochMillis))} at $clock"
+        else -> SimpleDateFormat("d MMM 'at' HH:mm", Locale.getDefault()).format(Date(epochMillis))
+    }
+}
+
+/** Whole calendar days from one instant to another, ignoring the time of day within each. */
+private fun calendarDaysBetween(from: Long, to: Long): Long {
+    fun startOfDay(at: Long) = Calendar.getInstance().apply {
+        timeInMillis = at
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    // Rounded rather than truncated: a daylight-saving day is 23 or 25 hours long, and integer
+    // division of that by 24 loses or invents a day exactly twice a year.
+    return Math.round((startOfDay(to) - startOfDay(from)) / TimeUnit.DAYS.toMillis(1).toDouble())
+}
+
+/** A run's wall-clock length, in the coarsest unit that is still informative. */
+fun formatDuration(millis: Long): String {
+    val seconds = millis / 1000
+    return when {
+        seconds < 1 -> "under a second"
+        seconds < 60 -> "${seconds}s"
+        seconds < 3600 -> "${seconds / 60}m ${seconds % 60}s"
+        else -> "${seconds / 3600}h ${(seconds % 3600) / 60}m"
+    }
+}
+
+/**
  * How long ago, in the shortest form that is still honest.
  *
  * Deliberately coarse: "3 days ago" is what someone wants to know about a memory, and a timestamp

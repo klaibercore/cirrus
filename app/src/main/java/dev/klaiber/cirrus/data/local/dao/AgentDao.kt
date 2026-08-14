@@ -16,6 +16,10 @@ interface AgentDao {
     @Query("SELECT * FROM agents WHERE enabled = 1")
     suspend fun enabled(): List<AgentEntity>
 
+    /** Every agent, for the startup sweep that has to reason about the disabled ones too. */
+    @Query("SELECT * FROM agents")
+    suspend fun all(): List<AgentEntity>
+
     @Query("SELECT * FROM agents WHERE id = :id")
     suspend fun byId(id: String): AgentEntity?
 

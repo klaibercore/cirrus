@@ -55,6 +55,7 @@ class ConversationRepository @Inject constructor(
         params: GenerationParams = GenerationParams.Default,
         toolsEnabled: Boolean = false,
         title: String = Conversation.DEFAULT_TITLE,
+        agentId: String? = null,
     ): Conversation {
         val now = System.currentTimeMillis()
         val conversation = Conversation(
@@ -66,9 +67,27 @@ class ConversationRepository @Inject constructor(
             toolsEnabled = toolsEnabled,
             createdAt = now,
             updatedAt = now,
+            agentId = agentId,
         )
         conversationDao.upsert(mapper.toEntity(conversation))
         return conversation
+    }
+
+    /** Every thread a given agent has written, newest first. */
+    suspend fun conversationsForAgent(agentId: String): List<Conversation> =
+        conversationDao.forAgent(agentId).map(mapper::toDomain)
+
+    /**
+     * Promotes an agent's run to an ordinary conversation.
+     *
+     * Called the moment someone replies to a run: from then on it is a thread they are working in,
+     * so it belongs in the drawer and retention must not delete it.
+     */
+    suspend fun detachFromAgent(id: String) =
+        conversationDao.detachFromAgent(id, System.currentTimeMillis())
+
+    suspend fun deleteConversations(ids: List<String>) {
+        if (ids.isNotEmpty()) conversationDao.deleteByIds(ids)
     }
 
     suspend fun updateConversation(conversation: Conversation) {
@@ -197,6 +216,9 @@ class ConversationRepository @Inject constructor(
             archived = false,
             forkedFromConversationId = conversationId,
             forkedFromMessageId = throughMessageId,
+            // A branch is something the user started, even when the thing branched from was an
+            // agent's run. It belongs in the drawer, and retention must never reclaim it.
+            agentId = null,
         )
         conversationDao.upsert(fork)
 

@@ -10,12 +10,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
-/** Supplies the theme configuration needed before any screen is composed. */
+/**
+ * Supplies the configuration needed before any screen is composed.
+ *
+ * Null means "not read yet", and the distinction matters: the defaults say onboarding has not been
+ * done, so treating an unread store as the truth would flash the welcome wizard at every existing
+ * user for one frame on every cold start.
+ */
 @HiltViewModel
 class MainViewModel @Inject constructor(
     settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
-    val settings: StateFlow<AppSettings> = settingsRepository.settings
-        .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
+    val settings: StateFlow<AppSettings?> = settingsRepository.settings
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 }

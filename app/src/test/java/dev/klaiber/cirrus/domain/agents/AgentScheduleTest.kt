@@ -3,6 +3,8 @@ package dev.klaiber.cirrus.domain.agents
 import dev.klaiber.cirrus.domain.memory.ConsolidationScheduler
 import dev.klaiber.cirrus.domain.model.Agent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.DayOfWeek
@@ -19,14 +21,18 @@ class AgentScheduleTest {
 
     private val zone = ZoneId.of("Europe/Berlin")
 
-    private fun agent(minuteOfDay: Int, days: Set<DayOfWeek>) = Agent(
+    private fun agent(
+        minuteOfDay: Int,
+        days: Set<DayOfWeek>,
+        enabled: Boolean = true,
+    ) = Agent(
         id = "a",
         name = "Briefing",
         prompt = "Summarise",
         model = null,
         minuteOfDay = minuteOfDay,
         days = days,
-        enabled = true,
+        enabled = enabled,
         toolsEnabled = true,
         notifyOnFinish = true,
         createdAt = 0,
@@ -83,6 +89,34 @@ class AgentScheduleTest {
             val delay = AgentScheduler.delayUntilNextRun(agent(9 * 60, setOf(day)), now, zone)
             assertTrue("scheduling for $day went backwards", delay > 0)
         }
+    }
+
+    /**
+     * The card says "next run tomorrow at 07:30", and that sentence has to agree with the booking
+     * behind it — a screen that promises a run at a different time from the one that fires is worse
+     * than a screen that promises nothing.
+     */
+    @Test
+    fun `the next run time agrees with the delay it is scheduled for`() {
+        val now = LocalDateTime.of(2026, 8, 12, 18, 0)
+        val subject = agent(7 * 60 + 30, Agent.WEEKDAYS)
+        val at = AgentScheduler.nextRunAt(subject, now, zone)!!
+        val delay = AgentScheduler.delayUntilNextRun(subject, now, zone)
+        assertEquals(now.atZone(zone).toInstant().toEpochMilli() + delay, at)
+    }
+
+    @Test
+    fun `an agent that cannot run has no next run`() {
+        val now = LocalDateTime.of(2026, 8, 12, 18, 0)
+        assertNull(AgentScheduler.nextRunAt(agent(9 * 60, Agent.WEEKDAYS, enabled = false), now, zone))
+        assertNull(AgentScheduler.nextRunAt(agent(9 * 60, emptySet()), now, zone))
+    }
+
+    @Test
+    fun `scheduling is off unless the agent is on and has a day`() {
+        assertTrue(agent(9 * 60, Agent.WEEKDAYS).isScheduled)
+        assertFalse(agent(9 * 60, Agent.WEEKDAYS, enabled = false).isScheduled)
+        assertFalse(agent(9 * 60, emptySet()).isScheduled)
     }
 
     @Test
