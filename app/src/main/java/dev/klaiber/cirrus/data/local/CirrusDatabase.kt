@@ -5,11 +5,13 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import dev.klaiber.cirrus.data.local.dao.AgentDao
+import dev.klaiber.cirrus.data.local.dao.AgentRunDao
 import dev.klaiber.cirrus.data.local.dao.ConversationDao
 import dev.klaiber.cirrus.data.local.dao.MemoryDao
 import dev.klaiber.cirrus.data.local.dao.MessageDao
 import dev.klaiber.cirrus.data.local.dao.PresetDao
 import dev.klaiber.cirrus.data.local.entity.AgentEntity
+import dev.klaiber.cirrus.data.local.entity.AgentRunEntity
 import dev.klaiber.cirrus.data.local.entity.AttachmentEntity
 import dev.klaiber.cirrus.data.local.entity.ConversationEntity
 import dev.klaiber.cirrus.data.local.entity.MemoryEntity
@@ -24,8 +26,9 @@ import dev.klaiber.cirrus.data.local.entity.PresetEntity
         PresetEntity::class,
         MemoryEntity::class,
         AgentEntity::class,
+        AgentRunEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class CirrusDatabase : RoomDatabase() {
@@ -34,6 +37,7 @@ abstract class CirrusDatabase : RoomDatabase() {
     abstract fun presetDao(): PresetDao
     abstract fun memoryDao(): MemoryDao
     abstract fun agentDao(): AgentDao
+    abstract fun agentRunDao(): AgentRunDao
 
     companion object {
         const val NAME = "cirrus.db"
@@ -103,6 +107,71 @@ abstract class CirrusDatabase : RoomDatabase() {
                     """.trimIndent(),
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_agents_enabled` ON `agents` (`enabled`)")
+            }
+        }
+
+        /**
+         * Gives an agent's output somewhere of its own to live.
+         *
+         * `conversations.agentId` is what takes scheduled runs out of the drawer: a daily agent
+         * used to add a thread a day to the same list as the conversations someone actually had,
+         * and after a fortnight the list was mostly machine. Existing rows get NULL, which is
+         * correct — anything written before this column existed was written by a person.
+         *
+         * `agent_runs` records every attempt rather than only the last one, and `keepRuns` is the
+         * retention that stops the fix from becoming a slower version of the same problem.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE conversations ADD COLUMN agentId TEXT")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_conversations_agentId` ON `conversations` (`agentId`)",
+                )
+
+                db.execSQL("ALTER TABLE agents ADD COLUMN keepRuns INTEGER NOT NULL DEFAULT 10")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `agent_runs` (
+                        `id` TEXT NOT NULL,
+                        `agentId` TEXT NOT NULL,
+                        `conversationId` TEXT,
+                        `startedAt` INTEGER NOT NULL,
+                        `finishedAt` INTEGER,
+                        `status` TEXT NOT NULL,
+                        `trigger` TEXT NOT NULL,
+                        `summary` TEXT,
+                        `errorMessage` TEXT,
+                        `toolCalls` INTEGER NOT NULL,
+                        `tokens` INTEGER,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`agentId`) REFERENCES `agents`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(`conversationId`) REFERENCES `conversations`(`id`)
+                            ON UPDATE NO ACTION ON DELETE SET NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_agent_runs_agentId_startedAt` ON `agent_runs` (`agentId`, `startedAt`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_agent_runs_conversationId` ON `agent_runs` (`conversationId`)",
+                )
+
+                // Threads an agent already wrote are re-homed from the drawer to their agent, so
+                // the fix applies to the backlog and not only to what happens next.
+                db.execSQL(
+                    """
+                    UPDATE conversations
+                    SET agentId = (
+                        SELECT a.id FROM agents a WHERE a.lastConversationId = conversations.id
+                    )
+                    WHERE EXISTS (
+                        SELECT 1 FROM agents a WHERE a.lastConversationId = conversations.id
+                    )
+                    """.trimIndent(),
+                )
             }
         }
     }

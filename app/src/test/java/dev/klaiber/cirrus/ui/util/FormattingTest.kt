@@ -1,6 +1,8 @@
 package dev.klaiber.cirrus.ui.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
@@ -65,6 +67,46 @@ class FormattingTest {
     @Test
     fun `formatNanos - minutes`() {
         assertEquals("1:30", formatNanos(90_000_000_000))
+    }
+
+    @Test
+    fun `formatWhen - minutes away stays in minutes`() {
+        assertEquals("in 20 min", formatWhen(now + TimeUnit.MINUTES.toMillis(20), now))
+        assertEquals("any moment", formatWhen(now, now))
+    }
+
+    /**
+     * The clock time is the half people check a schedule for, so anything an hour or more out
+     * names it — even when "in 15 hours" would also have been true.
+     */
+    @Test
+    fun `formatWhen - later today names the time`() {
+        val target = startOfToday() + TimeUnit.HOURS.toMillis(23)
+        val early = startOfToday() + TimeUnit.HOURS.toMillis(1)
+        assertEquals("today at ${formatTime(target)}", formatWhen(target, early))
+    }
+
+    @Test
+    fun `formatWhen - the next calendar day is tomorrow`() {
+        val target = startOfToday() + TimeUnit.DAYS.toMillis(1) + TimeUnit.HOURS.toMillis(7)
+        assertEquals("tomorrow at ${formatTime(target)}", formatWhen(target, now))
+    }
+
+    @Test
+    fun `formatWhen - within the week names the day`() {
+        val target = startOfToday() + TimeUnit.DAYS.toMillis(3) + TimeUnit.HOURS.toMillis(9)
+        val label = formatWhen(target, now)
+        assertTrue("expected a weekday name in \"$label\"", label.contains(" at "))
+        assertFalse(label.startsWith("tomorrow"))
+        assertFalse(label.startsWith("today"))
+    }
+
+    @Test
+    fun `formatDuration - reads in the coarsest useful unit`() {
+        assertEquals("under a second", formatDuration(200))
+        assertEquals("45s", formatDuration(45_000))
+        assertEquals("2m 5s", formatDuration(125_000))
+        assertEquals("1h 1m", formatDuration(3_660_000))
     }
 
     @Test

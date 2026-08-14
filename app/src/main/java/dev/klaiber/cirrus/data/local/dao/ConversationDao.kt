@@ -13,6 +13,14 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ConversationDao {
 
+    /**
+     * The drawer's list.
+     *
+     * `agentId IS NULL` is the whole of the separation between chats and scheduled runs: an agent
+     * that runs every morning would otherwise contribute a thread a day to the same list as the
+     * conversations someone actually had, and a list that is mostly machine is a list nobody reads.
+     * The runs are not hidden — they live on the agent that wrote them.
+     */
     @Transaction
     @Query(
         """
@@ -24,7 +32,7 @@ interface ConversationDao {
                 ORDER BY m2.sequence DESC LIMIT 1
             ) AS lastMessagePreview
         FROM conversations c
-        WHERE c.archived = :archived
+        WHERE c.archived = :archived AND c.agentId IS NULL
         ORDER BY c.pinned DESC, c.updatedAt DESC
         """,
     )
@@ -45,12 +53,15 @@ interface ConversationDao {
                 ORDER BY m2.sequence DESC LIMIT 1
             ) AS lastMessagePreview
         FROM conversations c
-        WHERE c.title LIKE '%' || :query || '%' COLLATE NOCASE
-           OR EXISTS (
-                SELECT 1 FROM messages m3
-                WHERE m3.conversationId = c.id
-                  AND m3.content LIKE '%' || :query || '%' COLLATE NOCASE
-           )
+        WHERE c.agentId IS NULL
+          AND (
+                c.title LIKE '%' || :query || '%' COLLATE NOCASE
+                OR EXISTS (
+                    SELECT 1 FROM messages m3
+                    WHERE m3.conversationId = c.id
+                      AND m3.content LIKE '%' || :query || '%' COLLATE NOCASE
+                )
+          )
         ORDER BY c.pinned DESC, c.updatedAt DESC
         """,
     )
@@ -62,16 +73,39 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE id = :id")
     suspend fun getById(id: String): ConversationEntity?
 
-    /** Threads touched since a point in time, newest first — what the nightly pass reads. */
+    /**
+     * Threads touched since a point in time, newest first — what the nightly pass reads.
+     *
+     * Agent runs are excluded on purpose. Memory is meant to be what the *user* said, and a
+     * scheduled prompt that runs daily would otherwise be harvested as a durable fact about them
+     * every single night, drowning the store in restatements of the agent's own instructions.
+     */
     @Query(
         """
         SELECT * FROM conversations
-        WHERE updatedAt > :since AND archived = 0
+        WHERE updatedAt > :since AND archived = 0 AND agentId IS NULL
         ORDER BY updatedAt DESC
         LIMIT :limit
         """,
     )
     suspend fun updatedSince(since: Long, limit: Int): List<ConversationEntity>
+
+    /** Every thread a given agent has written, newest first. */
+    @Query("SELECT * FROM conversations WHERE agentId = :agentId ORDER BY createdAt DESC")
+    suspend fun forAgent(agentId: String): List<ConversationEntity>
+
+    /**
+     * Turns an agent's run into an ordinary conversation.
+     *
+     * Replying to a run is the natural thing to do with a result you disagree with, and the moment
+     * you do it stops being a run: it belongs in the drawer with everything else you are working
+     * on, and retention must never delete it out from under you.
+     */
+    @Query("UPDATE conversations SET agentId = NULL, updatedAt = :now WHERE id = :id")
+    suspend fun detachFromAgent(id: String, now: Long)
+
+    @Query("DELETE FROM conversations WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(conversation: ConversationEntity)

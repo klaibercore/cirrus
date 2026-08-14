@@ -6,6 +6,7 @@ import dev.klaiber.cirrus.domain.model.ChatMessage
 import dev.klaiber.cirrus.domain.model.Conversation
 import dev.klaiber.cirrus.domain.model.GenerationParams
 import dev.klaiber.cirrus.domain.model.ModelInfo
+import dev.klaiber.cirrus.domain.model.StarterPrompt
 
 data class ChatUiState(
     val conversation: Conversation? = null,
@@ -21,7 +22,25 @@ data class ChatUiState(
     /** True until the API key exists; the composer is replaced by an onboarding prompt. */
     val needsApiKey: Boolean = false,
     val search: ChatSearch = ChatSearch(),
+    /** Set while this thread is still an agent's run, so the transcript can say whose it is. */
+    val agentName: String? = null,
 ) {
+    /**
+     * True for a thread an agent wrote and nobody has replied to yet.
+     *
+     * Worth saying out loud in the transcript: it explains why the thread is not in the drawer,
+     * and why the first message reads like an instruction rather than a question.
+     */
+    val isAgentRun: Boolean get() = conversation?.isAgentRun == true
+
+    /** Openers for a blank conversation, matched to what is actually switched on. */
+    val starterPrompts: List<StarterPrompt>
+        get() = if (settings.showStarterPrompts) {
+            StarterPrompt.forSettings(settings, toolsEnabled)
+        } else {
+            emptyList()
+        }
+
     val title: String get() = conversation?.title ?: Conversation.DEFAULT_TITLE
 
     val model: String get() = conversation?.model ?: settings.defaultModel

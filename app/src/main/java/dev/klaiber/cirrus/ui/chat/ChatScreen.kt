@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -85,10 +86,12 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.klaiber.cirrus.domain.model.Role
+import dev.klaiber.cirrus.domain.model.StarterPrompt
 import dev.klaiber.cirrus.ui.SharedPayload
 import dev.klaiber.cirrus.ui.components.Hairline
 import dev.klaiber.cirrus.ui.components.OutlinedPanel
 import dev.klaiber.cirrus.ui.components.PillButton
+import dev.klaiber.cirrus.ui.components.PillStyle
 import dev.klaiber.cirrus.ui.theme.ContainerShape
 import dev.klaiber.cirrus.ui.theme.LargeContainerShape
 import dev.klaiber.cirrus.ui.theme.Pill
@@ -379,45 +382,58 @@ fun ChatScreen(
             if (state.isEmpty) {
                 EmptyChatState(
                     hasModel = state.model.isNotBlank(),
+                    suggestions = state.starterPrompts,
                     onSuggestionClick = { suggestion ->
                         viewModel.onInputChange(suggestion)
                     },
                 )
             } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
-                ) {
-                    items(
-                        items = state.messages.filter { it.role == Role.USER || it.role == Role.ASSISTANT },
-                        key = { it.id },
-                    ) { message ->
-                        MessageItem(
-                            message = message,
-                            showStats = state.settings.showStats,
-                            renderMarkdown = state.settings.renderMarkdown,
-                            developerMode = state.settings.developerMode,
-                            highlight = state.search.highlight,
-                            speech = when {
-                                !state.settings.readAloudEnabled -> SpeechButtonState.HIDDEN
-                                speaking?.messageId != message.id -> SpeechButtonState.IDLE
-                                speaking?.isPreparing == true -> SpeechButtonState.PREPARING
-                                else -> SpeechButtonState.SPEAKING
-                            },
-                            onCopy = { text ->
-                                clipboard.copy(text)
-                                if (!clipboard.showsSystemConfirmation) {
-                                    // Android 13+ shows its own confirmation; don't double up.
-                                    copyNotice = "Copied to clipboard"
-                                }
-                            },
-                            onRegenerate = { viewModel.regenerate(message.id) },
-                            onBranch = { viewModel.branchFrom(message.id) },
-                            onSpeak = { viewModel.readAloud(message.id) },
-                            onMore = { actionTargetId = message.id },
+                Column(Modifier.fillMaxSize()) {
+                    if (state.isAgentRun) {
+                        AgentRunBanner(
+                            agentName = state.agentName,
+                            onKeep = viewModel::keepAgentRun,
                         )
+                    }
+                    LazyColumn(
+                        state = listState,
+                        // Weighted rather than filled: the agent banner above it, when there is
+                        // one, has to take its height from somewhere.
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        items(
+                            items = state.messages.filter {
+                                it.role == Role.USER || it.role == Role.ASSISTANT
+                            },
+                            key = { it.id },
+                        ) { message ->
+                            MessageItem(
+                                message = message,
+                                showStats = state.settings.showStats,
+                                renderMarkdown = state.settings.renderMarkdown,
+                                developerMode = state.settings.developerMode,
+                                highlight = state.search.highlight,
+                                speech = when {
+                                    !state.settings.readAloudEnabled -> SpeechButtonState.HIDDEN
+                                    speaking?.messageId != message.id -> SpeechButtonState.IDLE
+                                    speaking?.isPreparing == true -> SpeechButtonState.PREPARING
+                                    else -> SpeechButtonState.SPEAKING
+                                },
+                                onCopy = { text ->
+                                    clipboard.copy(text)
+                                    if (!clipboard.showsSystemConfirmation) {
+                                        // Android 13+ shows its own confirmation; don't double up.
+                                        copyNotice = "Copied to clipboard"
+                                    }
+                                },
+                                onRegenerate = { viewModel.regenerate(message.id) },
+                                onBranch = { viewModel.branchFrom(message.id) },
+                                onSpeak = { viewModel.readAloud(message.id) },
+                                onMore = { actionTargetId = message.id },
+                            )
+                        }
                     }
                 }
 
@@ -657,6 +673,43 @@ private fun ApiKeyPrompt(onOpenSettings: () -> Unit) {
 }
 
 /**
+ * Says whose thread this is.
+ *
+ * An agent's run looks like an ordinary conversation because it *is* one — that is the whole design
+ * — but it is not in the drawer, and its first message is an instruction nobody remembers typing.
+ * One line explains both, and offers the one action that changes it: keeping the thread turns it
+ * into an ordinary conversation, which replying to it does anyway.
+ */
+@Composable
+private fun AgentRunBanner(agentName: String?, onKeep: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Schedule,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = agentName?.let { "Run of \"$it\" · kept out of your conversations" }
+                    ?: "An agent wrote this · kept out of your conversations",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            PillButton(label = "Keep", onClick = onKeep, style = PillStyle.Secondary)
+        }
+    }
+}
+
+/**
  * The first screen of a new thread, and the app's one piece of stage.
  *
  * Everywhere else the design gets out of the way of the transcript, which leaves exactly one moment
@@ -666,7 +719,11 @@ private fun ApiKeyPrompt(onOpenSettings: () -> Unit) {
  * reason the model list is: it lets three of them read as one object instead of three buttons.
  */
 @Composable
-private fun EmptyChatState(hasModel: Boolean, onSuggestionClick: (String) -> Unit) {
+private fun EmptyChatState(
+    hasModel: Boolean,
+    suggestions: List<StarterPrompt>,
+    onSuggestionClick: (String) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -700,22 +757,30 @@ private fun EmptyChatState(hasModel: Boolean, onSuggestionClick: (String) -> Uni
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(28.dp))
-        SUGGESTIONS.forEach { suggestion ->
+        suggestions.forEach { suggestion ->
             OutlinedPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 8.dp),
-                onClick = { onSuggestionClick(suggestion) },
+                onClick = { onSuggestionClick(suggestion.prompt) },
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = suggestion,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = suggestion.label,
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            text = suggestion.prompt,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Spacer(Modifier.width(12.dp))
                     Icon(
                         imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
@@ -728,12 +793,6 @@ private fun EmptyChatState(hasModel: Boolean, onSuggestionClick: (String) -> Uni
         }
     }
 }
-
-private val SUGGESTIONS = listOf(
-    "Explain the tradeoffs between MoE and dense transformers",
-    "Review this stack trace and tell me the likely root cause",
-    "Draft a benchmark plan for comparing two models",
-)
 
 /**
  * Whether the notification prompt is still worth showing.

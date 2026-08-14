@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.klaiber.cirrus.data.AttachmentImporter
+import dev.klaiber.cirrus.data.repository.AgentRepository
 import dev.klaiber.cirrus.data.repository.ConversationRepository
 import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
@@ -37,6 +38,7 @@ import javax.inject.Inject
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val conversationRepository: ConversationRepository,
+    private val agentRepository: AgentRepository,
     private val settingsRepository: SettingsRepository,
     private val modelRepository: ModelRepository,
     private val turnController: TurnController,
@@ -98,12 +100,28 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    /** Everything about the thread itself, before the editor and settings are folded in. */
+    private data class Core(
+        val conversation: Conversation? = null,
+        val messages: List<ChatMessage> = emptyList(),
+        val turn: TurnState = TurnState(),
+        val agentName: String? = null,
+    )
+
     private val coreFlow = combine(
         conversationFlow,
         messagesFlow,
         turnFlow,
-    ) { conversation, messages, turnState ->
-        Triple(conversation, mergeLiveTurn(messages, turnState.turn), turnState)
+        agentRepository.agents,
+    ) { conversation, messages, turnState, agents ->
+        Core(
+            conversation = conversation,
+            messages = mergeLiveTurn(messages, turnState.turn),
+            turn = turnState,
+            agentName = conversation?.agentId?.let { id ->
+                agents.firstOrNull { it.id == id }?.name
+            },
+        )
     }
 
     val uiState: StateFlow<ChatUiState> = combine(
@@ -113,19 +131,19 @@ class ChatViewModel @Inject constructor(
         editor,
         search,
     ) { core, settings, models, editorState, searchInput ->
-        val (conversation, messages, turnState) = core
         ChatUiState(
-            conversation = conversation,
-            messages = messages,
-            isGenerating = turnState.turn != null,
+            conversation = core.conversation,
+            messages = core.messages,
+            isGenerating = core.turn.turn != null,
             input = editorState.input,
             voicePartial = editorState.voicePartial,
             pendingAttachments = editorState.attachments,
             settings = settings,
             availableModels = models,
-            errorBanner = editorState.error ?: turnState.error,
+            errorBanner = editorState.error ?: core.turn.error,
             needsApiKey = !settings.hasApiKey && settings.baseUrl.contains("ollama.com"),
-            search = searchInput.resolve(messages),
+            search = searchInput.resolve(core.messages),
+            agentName = core.agentName,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
 
@@ -287,6 +305,9 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             val conversation = ensureConversation() ?: return@launch
+            // Replying to an agent's run makes it yours: it moves into the drawer with everything
+            // else, and the agent's retention pass will never reclaim it.
+            if (conversation.isAgentRun) conversationRepository.detachFromAgent(conversation.id)
             conversationRepository.appendMessage(
                 conversationId = conversation.id,
                 role = Role.USER,
@@ -294,6 +315,16 @@ class ChatViewModel @Inject constructor(
                 attachments = attachments,
             )
             turnController.start(conversation.id)
+        }
+    }
+
+    /** Moves an agent's run into the conversation list without waiting for a reply. */
+    fun keepAgentRun() {
+        val conversation = uiState.value.conversation ?: return
+        if (!conversation.isAgentRun) return
+        viewModelScope.launch {
+            conversationRepository.detachFromAgent(conversation.id)
+            eventChannel.send(ChatEvent.ShowMessage("Kept in your conversations."))
         }
     }
 

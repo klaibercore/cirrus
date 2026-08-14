@@ -81,6 +81,8 @@ already know what a context window is, and gets out of your way.
 | 🌿 **Branch any conversation** | Fork from any message, edit-and-resend, regenerate, export to Markdown. |
 | 🎛️ **Full sampling control** | Temperature, top-p, top-k, min-p, penalties, seed, `num_ctx`, `num_predict`, stop sequences, JSON schema output, `keep_alive` — each independently overridable, each explained. |
 | 🎨 **Material 3 + dynamic colour** | Follows your wallpaper on Android 12+. Light, dark, or system. |
+| ⏰ **Agents that run without you** | A prompt on a schedule — a morning briefing, a Friday review, a nightly watch on something. Every attempt is recorded with its duration, tool calls and token count, so an agent that has been failing all week says so instead of showing you last Tuesday. Their answers are real threads you can read, branch and reply to, kept out of your conversation list until you do. |
+| 🚀 **A setup that proves itself** | A first-run wizard that walks from "where are your models?" to a working request, links out to create the key, and ends by offering an agent to start with. It can be skipped, and re-run later from Settings. |
 | 🔒 **No telemetry, ever** | No analytics, no crash reporter, no third-party backend. Two network destinations, both yours. |
 
 ---
@@ -92,6 +94,10 @@ git clone https://github.com/klaibercore/cirrus.git
 cd cirrus
 ./gradlew :app:installDebug
 ```
+
+On first launch a short wizard asks where your models are, tests the connection before it lets go,
+and offers to set up an agent. Everything below is what it walks you through — and Settings → Run
+setup again reopens it.
 
 Then point it at a host:
 

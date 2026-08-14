@@ -36,7 +36,8 @@ app/src/main/java/dev/klaiber/cirrus/
 │   │   └── components/     # MessageItem, Composer, ModelPickerSheet, ParametersSheet, ...
 │   ├── conversations/       # ConversationDrawer + ConversationsViewModel
 │   ├── memory/             # MemoryScreen + MemoryViewModel (browse, edit, pin, retire)
-│   ├── agents/             # AgentsScreen + editor sheet + AgentsViewModel
+│   ├── agents/             # AgentsScreen, AgentEditorSheet (AgentDraft), history/template sheets
+│   ├── onboarding/         # OnboardingScreen + OnboardingViewModel — the first-run wizard
 │   ├── settings/           # SettingsScreen + SettingsViewModel
 │   │   └── mcp/            # McpServersScreen, McpServerEditorSheet (probe), McpViewModel
 │   ├── components/         # HelpTooltip / HelpBadge, shared across screens
@@ -125,7 +126,14 @@ app/src/main/java/dev/klaiber/cirrus/
   the last run, then merges duplicates and retires what has been superseded. Nothing is deleted;
   retiring is archiving, and the memory screen can restore anything.
 - **`AgentRunner`** — runs a scheduled prompt with nobody watching and writes the answer into an
-  ordinary conversation, which is what lets every existing transcript feature work on it for free.
+  ordinary conversation *stamped with the agent's id*, which is what lets every existing transcript
+  feature work on it for free while keeping it out of the drawer. One run happens at a time (a
+  `Mutex`), it is bounded by `RUN_TIMEOUT_MS`, and it returns an `Outcome` so the worker can tell a
+  dropped socket from a rejected key. Every attempt is written to `agent_runs`, success or not.
+- **`OnboardingViewModel` / `OnboardingScreen`** — the first-run wizard. Its actual job is not
+  collecting settings but ending on a request that demonstrably worked: `testConnection` saves the
+  host and key *first*, because the credential holder the HTTP layer reads is fed from the same
+  store, and then fetches the catalogue. Skipping counts as finishing.
 - **`AgentScheduler` / `ConsolidationScheduler`** — one-shot WorkManager requests that re-book
   themselves. Periodic work has a fifteen-minute floor and drifts against the wall clock, which is
   fine for a sync and useless for "07:30 on weekdays".
@@ -217,6 +225,25 @@ rules, and holding to them is what keeps the app looking like one thing.
 Shared parts live in `ui/components/Primitives.kt` (`OutlinedPanel`, `PillButton`, `Tag`,
 `Hairline`). Assemble a screen from those rather than styling a `Surface` by hand.
 
+### Agents keep their own threads
+
+An agent run is an ordinary conversation — that is what makes every transcript feature work on it
+for free — but `conversations.agentId` says which agent wrote it, and every drawer query filters on
+`agentId IS NULL`. A daily agent used to contribute a thread a day to the same list as the
+conversations someone actually had; after a fortnight the list was mostly machine. The runs are not
+hidden, they live on the agent that wrote them.
+
+Three consequences worth keeping straight:
+
+- **Replying detaches.** `ChatViewModel.send` (and the banner's "Keep") clears `agentId`, because a
+  thread you have joined in on is a conversation, not an artefact. Branching a run produces a normal
+  thread for the same reason.
+- **Retention only reclaims what is still a run.** `Agent.keepRuns` bounds how many threads an agent
+  keeps; `AgentRepository.pruneRuns` deletes the oldest beyond it, on failures as well as successes,
+  and never touches one that has been detached.
+- **The nightly memory pass skips them.** `ConversationDao.updatedSince` excludes agent threads, or
+  a scheduled prompt gets harvested as a durable fact about the user every single night.
+
 ### Memory, agents and the tools switch
 
 The conversation's tools switch governs **external** tools only — web search, GitHub, MCP. Memory
@@ -268,9 +295,25 @@ Unit tests live in `app/src/test/java/...` mirroring the main package. Run with
 - The inline-emphasis matcher is simple: `**bold *italic***` (inner closing marker adjacent to
   the outer one) is not disambiguated; `**bold *italic* text**` works.
 - `ApiCredentials.normalizeBaseUrl` strips a trailing `/api` so callers can append `/api/...`.
-- Room is at **schema version 3**. `memories` and `agents` were added by `MIGRATION_2_3` as new
-  tables, so nothing existing is touched; the column types must match what Room generates for the
-  entities exactly or the identity hash check fails at open.
+- Room is at **schema version 4**. `MIGRATION_3_4` adds `conversations.agentId`, `agents.keepRuns`
+  and the `agent_runs` table, and back-fills `agentId` from each agent's `lastConversationId` so the
+  backlog is re-homed too. `keepRuns` declares `@ColumnInfo(defaultValue = "10")` on the entity as
+  well as in the ALTER: a default the database has and the entity does not is the kind of mismatch
+  that only surfaces as a crash on somebody else's upgrade. `memories` and `agents` came from
+  `MIGRATION_2_3`. Column types must match what Room generates exactly or the identity hash check
+  fails at open, and every schema change needs a regenerated `app/schemas/*.json` — that file is
+  written by a build, so run one after changing an entity.
+- **Only one agent runs at a time**, and that is load-bearing rather than tidy: `SendNotificationTool`
+  is a singleton carrying the conversation its notification should open, so two overlapping runs
+  hand each other's threads to each other's notifications. Agents fire on the minute, and "08:00 on
+  weekdays" is the likeliest time for anyone to have scheduled two.
+- A stalled stream does not throw — it simply never delivers another byte — so `AgentRunner` bounds
+  a run with `withTimeout`. Being killed by the work manager's own deadline instead would leave the
+  run marked as running forever *and* skip the re-booking that schedules tomorrow's. Runs that were
+  killed anyway (reboot, low memory) are closed out by `failInterruptedRuns` on the next start.
+- `AgentWorker` re-books the next occurrence under the same unique work name the retry chain uses,
+  so it must not do that while returning `Result.retry()` — it would cancel the retry it just asked
+  for.
 - WorkManager's own initialiser is **removed in the manifest**: workers are built by Hilt, and
   WorkManager initialising itself first means the first scheduled agent cannot be instantiated.
   `CirrusApp` implements `Configuration.Provider` and installs the Hilt factory instead.

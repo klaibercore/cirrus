@@ -23,7 +23,9 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Unarchive
@@ -69,6 +71,8 @@ fun ConversationDrawer(
     onSelectConversation: (String) -> Unit,
     onNewChat: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAgents: () -> Unit,
+    onOpenMemory: () -> Unit,
     viewModel: ConversationsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -170,22 +174,25 @@ fun ConversationDrawer(
             }
 
             HorizontalDivider()
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onOpenSettings)
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Settings,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(14.dp))
-                Text("Settings", style = MaterialTheme.typography.bodyLarge)
-            }
+            // Agents and memory are the two things Cirrus does while you are not looking, and both
+            // used to be two taps deep inside Settings — which reads as configuration rather than
+            // as somewhere with content in it. An agent's answers live behind this row.
+            DrawerAction(
+                icon = Icons.Outlined.Schedule,
+                label = if (state.agentCount > 0) "Agents · ${state.agentCount}" else "Agents",
+                onClick = onOpenAgents,
+            )
+            DrawerAction(
+                icon = Icons.Outlined.Psychology,
+                label = "Memory",
+                onClick = onOpenMemory,
+            )
+            DrawerAction(
+                icon = Icons.Outlined.Settings,
+                label = "Settings",
+                onClick = onOpenSettings,
+            )
+            Spacer(Modifier.height(8.dp))
         }
     }
 
@@ -221,6 +228,31 @@ fun ConversationDrawer(
                 TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
             },
         )
+    }
+}
+
+/** A destination at the foot of the drawer: one glyph, one word, the whole row tappable. */
+@Composable
+private fun DrawerAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(14.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }
 

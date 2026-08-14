@@ -7,7 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A setup that proves itself.** Cirrus can do nothing until it can reach a model, and neither way
+  of arranging that — a key from ollama.com, or a machine on your network running Ollama — is
+  guessable from a blank chat screen. A short wizard now asks which one you have, links out to
+  create the key, and ends on a request that demonstrably worked rather than on a form that was
+  filled in. It finishes by offering an agent to start with. It can be skipped from any step,
+  skipping counts as done, and **Settings → Run setup again** reopens it — which also makes it the
+  answer to "it stopped working", since the connection test is the same one.
+- **Run history for every agent.** The card shows the last run, which cannot tell "it worked this
+  morning" apart from "it has failed every morning this week". Every attempt is now recorded with
+  its duration, tool calls, token count and whether you started it by hand, and the second case
+  looks nothing like the first.
+- **Agents start from a worked example.** Six of them — a morning briefing, a topic watch, a
+  repository triage, a weekly review, tomorrow's plan, one idea a day — each opening the ordinary
+  editor with its fields filled in, to be edited before it is saved. The blank editor is why most
+  people never made a second agent, and often not a first.
+- **When it next runs, in words.** A card says "Next tomorrow at 07:30" rather than leaving you to
+  work it out from "07:30 · weekdays", and shows a live indicator while a run is in flight.
+- **Agents and Memory are in the drawer.** Both were two taps deep inside Settings, which reads as
+  configuration rather than as somewhere with content in it.
+
+### Changed
+
+- **An agent's answers stay out of your conversations.** A daily agent contributed a thread a day to
+  the same list as the conversations you actually had, so after a fortnight the drawer was mostly
+  machine and your own threads had been pushed off the end. Runs now live on the agent that wrote
+  them. They are still ordinary threads — open, scroll, branch, export — and replying to one moves
+  it into your conversation list, because a thread you have joined in on is a conversation rather
+  than an artefact. A banner on a run says so, with a **Keep** button for when you want it without
+  answering. Threads written before this update are moved across automatically.
+- **Agents tidy up after themselves.** Each keeps a set number of runs — ten by default, adjustable
+  in the editor — and older threads are deleted after each run. Anything you replied to or kept is
+  never touched.
+- **Deleting an agent says what it will take with it**, and asks first. It used to delete
+  immediately and leave its threads behind, invisible everywhere in the app.
+- **Suggested openers match what is switched on.** The three fixed examples on an empty chat have
+  been replaced by four drawn from what this install can actually do — no offer to read your
+  repositories unless a GitHub token is configured, since a suggestion that fails is worse than no
+  suggestion. They can be turned off in **Settings → Chats**.
+
+### Fixed
+
+- **Two agents at the same time swapped notifications.** The tool that puts something on the shade
+  carries the conversation its notification should open, and it is a single shared object, so two
+  runs overlapping — which "08:00 on weekdays" makes likely — handed each other's threads to each
+  other's notifications. Only one agent runs at a time now, which also stops two generations
+  competing for the same phone.
+- **A stalled run left an agent stuck forever.** A stream that stops delivering does not fail, it
+  just goes quiet, so the run blocked until the system killed it at its own deadline — leaving the
+  agent marked as running and, worse, skipping the booking that would have scheduled tomorrow. Runs
+  now stop themselves first, and anything killed by a reboot or by the phone reclaiming memory is
+  closed out at the next start instead of showing a spinner for something that ended days ago.
+- **A cancelled run was recorded as a finished one**, so an agent could appear to have answered
+  when it had been stopped mid-sentence.
+- **One dropped connection no longer costs you the day.** Every failure was final, so a network
+  blip at 07:30 meant no briefing. Transport failures are retried twice, half a minute apart; a
+  rejected key deliberately is not, since re-running the generation only rediscovers that the key
+  is still wrong.
+- **An agent switched off while the app was closed ran anyway.** Re-booking on startup never
+  cancelled what should no longer fire, so a switch marked off did the thing anyway.
+- **Scheduled prompts are no longer remembered as facts about you.** The nightly memory pass read
+  agent threads along with everything else, so a daily agent's own instructions were harvested as
+  something durable about you every single night.
+- **Saving a key and then testing it no longer races itself.** The connection test could run against
+  the previous key, reporting a failure for a key that was fine.
 
 ## [1.3.1] - 2026-08-13
 
