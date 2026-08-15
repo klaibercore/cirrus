@@ -15,6 +15,13 @@
     <!-- Dictation in the composer. Requested at the moment the microphone is first tapped. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Coarse only, and on purpose: every use of get_location — weather, what is nearby, travel
+         time — is answered by the neighbourhood, and the difference between that and the doorstep
+         is the difference between a useful tool and a tracking device. Requested when the Location
+         switch is turned on. No background location: an agent running at 3am has no business
+         asking where somebody is. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <!-- Package visibility: without these, Android 11+ hides the services behind them. Speech
          recognition reports that no recogniser exists, and TextToSpeech fails to bind to any
          engine at all — both look like the feature is broken rather than invisible. -->
@@ -24,6 +31,22 @@
         </intent>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <!-- Apps with a launcher icon, for list_installed_apps and open_app. This is the narrow
+             form on purpose: QUERY_ALL_PACKAGES would also reveal every app without an icon,
+             which is a far more revealing list than "what can I open for you?" needs. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- The store listing install_app opens, and a browser to fall back on. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="market" />
         </intent>
     </queries>
 
@@ -41,12 +64,23 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|fontScale"
             android:theme="@style/Theme.Cirrus">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Where Spotify sends the browser back to after a sign-in. The scheme has to match
+                 the redirect URI registered on the Spotify application exactly, and Android routes
+                 it here as a new intent on the existing task. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="cirrus" android:host="spotify" />
             </intent-filter>
 
             <!-- Accept shared text from other apps as a new prompt. -->

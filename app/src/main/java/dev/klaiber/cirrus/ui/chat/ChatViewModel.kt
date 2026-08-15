@@ -11,6 +11,7 @@ import dev.klaiber.cirrus.data.repository.ConversationRepository
 import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.SpeechController
+import dev.klaiber.cirrus.domain.SuggestionGenerator
 import dev.klaiber.cirrus.domain.TurnController
 import dev.klaiber.cirrus.domain.userMessage
 import dev.klaiber.cirrus.domain.model.Attachment
@@ -18,6 +19,7 @@ import dev.klaiber.cirrus.domain.model.ChatMessage
 import dev.klaiber.cirrus.domain.model.Conversation
 import dev.klaiber.cirrus.domain.model.GenerationParams
 import dev.klaiber.cirrus.domain.model.Role
+import dev.klaiber.cirrus.domain.model.StarterPrompt
 import dev.klaiber.cirrus.ui.markdown.markdownToSpeech
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -44,6 +46,7 @@ class ChatViewModel @Inject constructor(
     private val turnController: TurnController,
     private val speechController: SpeechController,
     private val attachmentImporter: AttachmentImporter,
+    private val suggestionGenerator: SuggestionGenerator,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -106,14 +109,18 @@ class ChatViewModel @Inject constructor(
         val messages: List<ChatMessage> = emptyList(),
         val turn: TurnState = TurnState(),
         val agentName: String? = null,
+        val suggestions: List<StarterPrompt> = emptyList(),
     )
 
+    // Folded in here rather than into the outer combine, which is already at the five-flow
+    // overload; the suggestions belong to the thread's opening screen either way.
     private val coreFlow = combine(
         conversationFlow,
         messagesFlow,
         turnFlow,
         agentRepository.agents,
-    ) { conversation, messages, turnState, agents ->
+        suggestionGenerator.starters,
+    ) { conversation, messages, turnState, agents, suggestions ->
         Core(
             conversation = conversation,
             messages = mergeLiveTurn(messages, turnState.turn),
@@ -121,6 +128,7 @@ class ChatViewModel @Inject constructor(
             agentName = conversation?.agentId?.let { id ->
                 agents.firstOrNull { it.id == id }?.name
             },
+            suggestions = suggestions,
         )
     }
 
@@ -144,8 +152,27 @@ class ChatViewModel @Inject constructor(
             needsApiKey = !settings.hasApiKey && settings.baseUrl.contains("ollama.com"),
             search = searchInput.resolve(core.messages),
             agentName = core.agentName,
+            generatedPrompts = core.suggestions,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
+
+    /**
+     * Asks the model for openers, the first time an empty chat is looked at.
+     *
+     * Driven from the screen rather than from `init`, because a thread with messages in it never
+     * shows them: paying for a request whose result nobody will see is exactly the kind of thing
+     * that makes a hosted API feel expensive for no reason.
+     */
+    fun ensureSuggestions() {
+        if (uiState.value.settings.showStarterPrompts) {
+            suggestionGenerator.ensureStarters(uiState.value.toolsEnabled)
+        }
+    }
+
+    /** The "something else" affordance: a different four, from the same model. */
+    fun refreshSuggestions() {
+        suggestionGenerator.refreshStarters(uiState.value.toolsEnabled)
+    }
 
     /**
      * Which messages contain the query, and which of those is currently in view.

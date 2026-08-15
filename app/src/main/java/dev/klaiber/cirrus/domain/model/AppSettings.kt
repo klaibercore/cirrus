@@ -39,10 +39,18 @@ data class AppSettings(
     val gitHubToolsEnabled: Boolean = false,
     val hasGitHubToken: Boolean = false,
     /**
-     * Lets the model open issues, comment and post reviews. Default off: reading is recoverable,
-     * writing is not, and a tool call is decided by a model rather than by the user.
+     * Lets every tool that changes something outside Cirrus actually run: opening a GitHub issue,
+     * committing a file, editing a Spotify playlist, or an MCP tool that has not declared itself
+     * read-only.
+     *
+     * Default off, and one switch rather than one per integration. Reading is recoverable and
+     * writing is not, whoever is being written to — and a per-integration switch meant the third
+     * integration shipped without one, which is exactly what had happened to MCP.
+     *
+     * Migrated from the old `github_writes` key, so anyone who had allowed GitHub writes keeps
+     * them without being asked again.
      */
-    val gitHubWritesAllowed: Boolean = false,
+    val writeToolsAllowed: Boolean = false,
     val voiceInputEnabled: Boolean = true,
     /**
      * Prefer Android's offline recogniser, so dictated audio never leaves the device. Falls back
@@ -57,6 +65,56 @@ data class AppSettings(
     val elevenLabsVoiceId: String = "",
     val elevenLabsVoiceName: String = "",
     val elevenLabsModelId: String = ElevenLabsModel.Default.id,
+    /**
+     * Offers the shell and the everyday-work tools: run_command, the clock, the calendar and the
+     * device summary.
+     *
+     * On by default, and not behind the conversation's tools switch, for the same reason memory is
+     * not: none of it leaves the phone, none of it costs a round trip, and a model that cannot find
+     * out what today's date is answers scheduling questions from the year it was trained in. The
+     * shell itself is safe to leave on because [dev.klaiber.cirrus.domain.tools.shell.CommandPolicy]
+     * decides what may run before anything does, and the working directory is a scratch folder in
+     * Cirrus's own cache.
+     */
+    val shellToolsEnabled: Boolean = true,
+    /**
+     * Lets the model list, open and offer to install apps.
+     *
+     * Off by default. Everything else in the local set answers a question; this one acts — it puts
+     * another app in front of whatever the user was reading, and points them at a store page. It
+     * still cannot install anything: Android's own installer asks, every time.
+     */
+    val appControlEnabled: Boolean = false,
+    /**
+     * Offers `get_location`.
+     *
+     * Off by default and separate from everything else, because where somebody is is the most
+     * personal thing this app can read, and it is the one capability whose usefulness ("what is
+     * the weather here?") is easy to mistake for a reason to leave it on permanently.
+     */
+    val locationEnabled: Boolean = false,
+    /**
+     * A mirror of Android's own permission, kept so the settings catalogue can tell "switched off"
+     * apart from "switched on but the permission was refused" — two states that send the user to
+     * completely different screens. Written whenever it is observed; the tool re-checks for real
+     * at the moment of the call, and that check is the authority.
+     */
+    val hasLocationPermission: Boolean = false,
+    /** Offers the Spotify tools. Needs a client ID and a signed-in account to do anything. */
+    val spotifyEnabled: Boolean = false,
+    /** The user's own Spotify application, from developer.spotify.com. No secret: this is PKCE. */
+    val spotifyClientId: String = "",
+    val hasSpotifyAccount: Boolean = false,
+    /** Shown in settings so it is obvious which account is connected. */
+    val spotifyAccountName: String = "",
+    /**
+     * Whether the connected account is Premium.
+     *
+     * Recorded because the Web API refuses playback control on free accounts with a 403 that says
+     * nothing useful, and the honest answer to that is to fall back to the on-device media keys
+     * rather than to report a failure.
+     */
+    val spotifyPremium: Boolean = false,
     /** Offers the remember/recall/forget tools, and sends pinned memories with every turn. */
     val memoryEnabled: Boolean = true,
     /** Lets a model put something on the notification shade. */

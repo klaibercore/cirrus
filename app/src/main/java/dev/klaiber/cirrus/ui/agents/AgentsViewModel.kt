@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.klaiber.cirrus.data.repository.AgentRepository
 import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
+import dev.klaiber.cirrus.domain.SuggestionGenerator
 import dev.klaiber.cirrus.domain.agents.AgentScheduler
 import dev.klaiber.cirrus.domain.model.Agent
 import dev.klaiber.cirrus.domain.model.AgentRun
@@ -42,6 +43,7 @@ data class AgentsUiState(
 class AgentsViewModel @Inject constructor(
     private val agents: AgentRepository,
     private val scheduler: AgentScheduler,
+    private val suggestions: SuggestionGenerator,
     modelRepository: ModelRepository,
     settings: SettingsRepository,
 ) : ViewModel() {
@@ -49,19 +51,29 @@ class AgentsViewModel @Inject constructor(
     /** Which agent's history is open, if any. */
     private val historyFor = MutableStateFlow<String?>(null)
 
+    init {
+        // Asked for once, when the screen that shows them is opened. The static six remain in
+        // place until an answer lands, so nothing waits on this.
+        suggestions.ensureAgentIdeas()
+    }
+
     val uiState: StateFlow<AgentsUiState> = combine(
         agents.agents,
         modelRepository.models,
         settings.settings,
         agents.recentRuns(),
-    ) { list, models, appSettings, recent ->
+        suggestions.agentIdeas,
+    ) { list, models, appSettings, recent, ideas ->
         val hasGitHub = appSettings.gitHubToolsEnabled && appSettings.hasGitHubToken
         AgentsUiState(
             agents = list,
             models = models.map { it.name },
             defaultModel = appSettings.defaultModel,
             notificationsAllowed = appSettings.notificationToolEnabled,
-            templates = AgentTemplate.All.filter { !it.needsGitHub || hasGitHub },
+            // The written-in-advance six are the floor: they are what the sheet opens with, and
+            // what it keeps if the model cannot be reached. Ideas from the user's own model go in
+            // front of them, because they were written knowing what this install can actually do.
+            templates = ideas + AgentTemplate.All.filter { !it.needsGitHub || hasGitHub },
             // Computed here rather than stored: a next-run time written to the database would be
             // wrong the moment the clock crossed it, and right only until then.
             nextRuns = list.mapNotNull { agent ->

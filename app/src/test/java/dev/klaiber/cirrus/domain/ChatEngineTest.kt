@@ -25,8 +25,12 @@ import dev.klaiber.cirrus.domain.tools.MemoryToolSet
 import dev.klaiber.cirrus.domain.tools.RecallTool
 import dev.klaiber.cirrus.domain.tools.RememberTool
 import dev.klaiber.cirrus.domain.tools.SendNotificationTool
+import dev.klaiber.cirrus.domain.tools.DescribeSettingsTool
+import dev.klaiber.cirrus.domain.tools.DeviceToolSet
+import dev.klaiber.cirrus.domain.tools.SpotifyToolSet
 import dev.klaiber.cirrus.domain.tools.ToolRegistry
 import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsCredentials
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.domain.tools.GitHubToolSet
@@ -97,6 +101,7 @@ class ChatEngineTest {
             credentials = ApiCredentials(),
             gitHubCredentials = gitHubCredentials,
             elevenLabsCredentials = ElevenLabsCredentials(),
+            spotifyCredentials = SpotifyCredentials(),
             json = json,
             scope = scope,
         )
@@ -142,8 +147,19 @@ class ChatEngineTest {
                 ForgetTool(memoryRepository),
             ),
             notificationTool = SendNotificationTool(RecordingNotifier()),
+            // The device and Spotify tools need a Context and an account, so none is offered here.
+            // The turn protocol does not care which tools exist, only that the loop services
+            // whatever the model asks for.
+            deviceTools = DeviceToolSet(
+                shell = emptyList(),
+                apps = emptyList(),
+                location = emptyList(),
+            ),
+            spotifyTools = SpotifyToolSet(all = emptyList()),
+            settingsTool = DescribeSettingsTool(settingsRepository),
             settingsRepository = settingsRepository,
             gitHubCredentials = gitHubCredentials,
+            spotifyCredentials = SpotifyCredentials(),
         )
     }
 
@@ -447,8 +463,14 @@ class ChatEngineTest {
             AppSettings(),
         ).toList()
 
+        // The refusal has to say *why*, not just "no". A model told "unknown tool" concludes the
+        // app cannot search the web at all and tells the user so; one told which switch is off can
+        // ask them to turn it on.
         val finished = events.filterIsInstance<TurnEvent.ToolFinished>()
-        assertTrue(finished.all { it.invocation.errorMessage?.contains("Unknown tool") == true })
+        assertTrue(
+            "the refusal should name the switch that is in the way",
+            finished.all { it.invocation.errorMessage?.contains("tools switch") == true },
+        )
         assertTrue(events.filterIsInstance<TurnEvent.Finished>().isNotEmpty())
     }
 

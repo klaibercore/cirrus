@@ -23,8 +23,8 @@ import kotlinx.serialization.json.putJsonObject
  */
 abstract class GitHubTool : CirrusTool {
 
-    /** True for anything that changes state on GitHub; surfaced in the UI and gated in settings. */
-    open val writes: Boolean get() = false
+    /** True for anything that changes state on GitHub. Read by the one write gate in ToolRegistry. */
+    override val writes: Boolean get() = false
 
     final override suspend fun execute(arguments: JsonObject): String = try {
         run(arguments)

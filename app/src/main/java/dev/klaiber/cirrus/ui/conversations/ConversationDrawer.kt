@@ -23,9 +23,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.PushPin
-import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Unarchive
@@ -71,8 +69,6 @@ fun ConversationDrawer(
     onSelectConversation: (String) -> Unit,
     onNewChat: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenAgents: () -> Unit,
-    onOpenMemory: () -> Unit,
     viewModel: ConversationsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -174,19 +170,11 @@ fun ConversationDrawer(
             }
 
             HorizontalDivider()
-            // Agents and memory are the two things Cirrus does while you are not looking, and both
-            // used to be two taps deep inside Settings — which reads as configuration rather than
-            // as somewhere with content in it. An agent's answers live behind this row.
-            DrawerAction(
-                icon = Icons.Outlined.Schedule,
-                label = if (state.agentCount > 0) "Agents · ${state.agentCount}" else "Agents",
-                onClick = onOpenAgents,
-            )
-            DrawerAction(
-                icon = Icons.Outlined.Psychology,
-                label = "Memory",
-                onClick = onOpenMemory,
-            )
+            // One destination, not three. Agents and memory briefly lived here too, on the
+            // argument that they are things Cirrus does while you are not looking — but the drawer
+            // is the conversation list, and three rows of somewhere-else under it made the thing
+            // it is for look like one option among several. Both are one tap into Settings, which
+            // is where everything that is not a conversation belongs.
             DrawerAction(
                 icon = Icons.Outlined.Settings,
                 label = "Settings",

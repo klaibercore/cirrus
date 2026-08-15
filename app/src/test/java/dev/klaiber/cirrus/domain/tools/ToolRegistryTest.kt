@@ -8,6 +8,7 @@ import dev.klaiber.cirrus.data.prefs.SecretCipher
 import dev.klaiber.cirrus.data.remote.ApiCredentials
 import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsCredentials
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.repository.McpServerRepository
@@ -31,8 +32,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -60,6 +66,7 @@ class ToolRegistryTest {
     private val json = Json { ignoreUnknownKeys = true }
     private lateinit var settings: SettingsRepository
     private lateinit var gitHubCredentials: GitHubCredentials
+    private lateinit var spotifyCredentials: SpotifyCredentials
     private lateinit var registry: ToolRegistry
 
     @Before
@@ -72,12 +79,14 @@ class ToolRegistryTest {
             )
         }
         gitHubCredentials = GitHubCredentials()
+        spotifyCredentials = SpotifyCredentials()
         settings = SettingsRepository(
             dataStore = dataStore,
             secretCipher = SecretCipher(),
             credentials = ApiCredentials(),
             gitHubCredentials = gitHubCredentials,
             elevenLabsCredentials = ElevenLabsCredentials(),
+            spotifyCredentials = spotifyCredentials,
             json = json,
             scope = scope,
         )
@@ -121,8 +130,21 @@ class ToolRegistryTest {
                 ForgetTool(memories),
             ),
             notificationTool = SendNotificationTool(SilentNotifier()),
+            // Stand-ins: the real device tools need a Context, and what is under test here is the
+            // gate rather than what is behind it. Two entries, because the two lists answer to two
+            // different switches and both halves of each gate have to be exercised.
+            deviceTools = DeviceToolSet(
+                shell = listOf(StubTool("run_command")),
+                apps = listOf(StubTool("open_app")),
+                location = listOf(StubTool("get_location")),
+            ),
+            spotifyTools = SpotifyToolSet(
+                all = listOf(StubTool("spotify_search"), StubTool("spotify_edit", writes = true)),
+            ),
+            settingsTool = DescribeSettingsTool(settings),
             settingsRepository = settings,
             gitHubCredentials = gitHubCredentials,
+            spotifyCredentials = spotifyCredentials,
         )
     }
 
@@ -168,6 +190,40 @@ class ToolRegistryTest {
 
         assertFalse(offeredNames(externalTools = true).contains("send_notification"))
         assertNull(registry.find("send_notification", externalTools = true))
+    }
+
+    // ---- The device tools sit outside that switch too ---------------------------------------
+
+    /**
+     * The same argument memory makes: the switch governs what leaves the phone, and the clock does
+     * not. A model that cannot ask what today's date is answers from the year it was trained in.
+     */
+    @Test
+    fun `shell tools are offered even with external tools off`() = runBlocking {
+        assertTrue(offeredNames(externalTools = false).contains("run_command"))
+        assertNotNull(registry.find("run_command", externalTools = false))
+    }
+
+    @Test
+    fun `shell tools disappear entirely when the setting is off`() = runBlocking {
+        settings.setShellToolsEnabled(false)
+        await("shell off") { !settings.current.value.shellToolsEnabled }
+
+        assertFalse(offeredNames(externalTools = true).contains("run_command"))
+        assertNull(registry.find("run_command", externalTools = true))
+    }
+
+    /** The one local tool that acts rather than answers, so it starts off. */
+    @Test
+    fun `app tools are absent by default and appear only when switched on`() = runBlocking {
+        assertFalse(offeredNames(externalTools = true).contains("open_app"))
+        assertNull(registry.find("open_app", externalTools = true))
+
+        settings.setAppControlEnabled(true)
+        await("app control on") { settings.current.value.appControlEnabled }
+
+        assertTrue(offeredNames(externalTools = false).contains("open_app"))
+        assertNotNull(registry.find("open_app", externalTools = false))
     }
 
     // ---- The GitHub gates ------------------------------------------------------------------
@@ -290,7 +346,7 @@ class ToolRegistryTest {
         writesAllowed: Boolean,
     ) {
         settings.setGitHubToolsEnabled(toolsEnabled)
-        settings.setGitHubWritesAllowed(writesAllowed)
+        settings.setWriteToolsAllowed(writesAllowed)
         val derivedWrites = toolsEnabled && writesAllowed
         await("gitHubToolsEnabled=$toolsEnabled") {
             settings.current.value.gitHubToolsEnabled == toolsEnabled
@@ -314,6 +370,22 @@ class ToolRegistryTest {
     private companion object {
         const val AWAIT_TIMEOUT_MS = 5_000L
     }
+}
+
+/** A name and a schema, which is all the registry's gates ever look at. */
+private class StubTool(
+    override val name: String,
+    override val writes: Boolean = false,
+) : CirrusTool {
+    override val definition: JsonElement = buildJsonObject {
+        put("type", "function")
+        putJsonObject("function") {
+            put("name", name)
+            put("description", "stub")
+        }
+    }
+
+    override suspend fun execute(arguments: JsonObject): String = "{}"
 }
 
 /** There is no notification manager in a JVM test, and nothing here asserts on one. */

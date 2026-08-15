@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -104,6 +105,7 @@ import dev.klaiber.cirrus.ui.chat.components.SpeechButtonState
 import dev.klaiber.cirrus.ui.util.rememberClipboard
 import dev.klaiber.cirrus.ui.voice.rememberVoiceInput
 import kotlinx.coroutines.launch
+import java.time.LocalTime
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -380,12 +382,18 @@ fun ChatScreen(
                 .padding(innerPadding),
         ) {
             if (state.isEmpty) {
+                // Only asked for once the screen that shows them is actually on it, so a thread
+                // with messages in it never pays for openers nobody will see.
+                LaunchedEffect(state.settings.defaultModel, state.toolsEnabled) {
+                    viewModel.ensureSuggestions()
+                }
                 EmptyChatState(
                     hasModel = state.model.isNotBlank(),
                     suggestions = state.starterPrompts,
                     onSuggestionClick = { suggestion ->
                         viewModel.onInputChange(suggestion)
                     },
+                    onShuffle = viewModel::refreshSuggestions,
                 )
             } else {
                 Column(Modifier.fillMaxSize()) {
@@ -713,44 +721,49 @@ private fun AgentRunBanner(agentName: String?, onKeep: () -> Unit) {
  * The first screen of a new thread, and the app's one piece of stage.
  *
  * Everywhere else the design gets out of the way of the transcript, which leaves exactly one moment
- * to say what the app is: a blank conversation. It is built like the reference site's hero —
- * the mark, one large line set in the rounded display face, one muted line under it, and openings
- * offered as bordered rows rather than as tinted chips. The rows are hairline-outlined for the same
- * reason the model list is: it lets three of them read as one object instead of three buttons.
+ * to be warm about it: a blank conversation. The greeting is the mark and one line, set side by
+ * side in the rounded display face — a cloud and "Good evening" reads as somebody saying hello,
+ * where a 40dp logo above a question reads as a splash screen. It also stops the screen asking a
+ * question ("What should we dig into?") that the four rows underneath are already answering.
+ *
+ * Those rows are hairline-outlined rather than tinted chips, for the same reason the model list is:
+ * it lets four of them read as one object instead of four buttons.
  */
 @Composable
 private fun EmptyChatState(
     hasModel: Boolean,
     suggestions: List<StarterPrompt>,
     onSuggestionClick: (String) -> Unit,
+    onShuffle: () -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 24.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            imageVector = Icons.Outlined.Cloud,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(40.dp),
-        )
-        Spacer(Modifier.height(20.dp))
-        Text(
-            text = "What should we dig into?",
-            style = MaterialTheme.typography.displaySmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Outlined.Cloud,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(30.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = greeting(),
+                style = MaterialTheme.typography.displaySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
         Spacer(Modifier.height(10.dp))
         Text(
             text = if (hasModel) {
-                "Attach files, enable web search, or tune sampling from the composer."
+                "Ask me anything, or start with one of these."
             } else {
-                "Pick a model from the title bar to begin."
+                "Pick a model from the title bar and we can begin."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -791,7 +804,47 @@ private fun EmptyChatState(
                 }
             }
         }
+        if (suggestions.isNotEmpty() && hasModel) {
+            Spacer(Modifier.height(4.dp))
+            Row(
+                // heightIn rather than padding: the row is the tap target, and a 32dp one would
+                // be under the platform minimum however comfortable the text looks inside it.
+                modifier = Modifier
+                    .clip(Pill)
+                    .clickable(onClick = onShuffle)
+                    .heightIn(min = 48.dp)
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Refresh,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Suggest something else",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
+}
+
+/**
+ * The time of day, said the way a person would.
+ *
+ * Read once per composition of the empty state rather than kept live: a greeting that changed under
+ * the reader at midnight would be a strange thing to have built, and the screen is replaced by a
+ * transcript the moment anything is sent.
+ */
+private fun greeting(): String = when (LocalTime.now().hour) {
+    in 0..4 -> "Still up?"
+    in 5..11 -> "Good morning"
+    in 12..17 -> "Good afternoon"
+    else -> "Good evening"
 }
 
 /**

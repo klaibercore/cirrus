@@ -39,6 +39,17 @@ data class McpToolDescriptor(
     val name: String,
     val description: String,
     val inputSchema: JsonElement,
+    /**
+     * What the server says about whether this tool changes anything, from the spec's optional
+     * `annotations` block.
+     *
+     * Three states, and the third is the point. `true` and `false` are the server telling us; null
+     * is the server not saying, which is the common case — annotations are optional and most
+     * servers omit them. Cirrus treats null as "assume it writes", because the alternative is
+     * assuming a tool called `delete_everything` is harmless on the grounds that nobody mentioned
+     * otherwise.
+     */
+    val readOnly: Boolean? = null,
 )
 
 sealed class McpException(message: String) : IOException(message) {
@@ -89,9 +100,27 @@ class McpClient @Inject constructor(
                     name = name,
                     description = tool["description"]?.jsonPrimitive?.content.orEmpty(),
                     inputSchema = tool["inputSchema"] ?: EMPTY_SCHEMA,
+                    readOnly = tool.readOnlyHint(),
                 )
             }
         }
+
+    /**
+     * Reads the spec's tool annotations, which are hints rather than guarantees.
+     *
+     * `destructiveHint` wins over `readOnlyHint` when a server sets both, because the two together
+     * are a contradiction and the cautious reading is the only safe one. Anything malformed is
+     * treated as absent rather than as a value.
+     */
+    private fun JsonObject.readOnlyHint(): Boolean? {
+        val annotations = this["annotations"] as? JsonObject ?: return null
+        val destructive = annotations["destructiveHint"]?.booleanOrNull()
+        if (destructive == true) return false
+        return annotations["readOnlyHint"]?.booleanOrNull()
+    }
+
+    private fun JsonElement.booleanOrNull(): Boolean? =
+        runCatching { jsonPrimitive.content.toBooleanStrict() }.getOrNull()
 
     /** Runs a tool and flattens the result into the text a model can read. */
     suspend fun callTool(

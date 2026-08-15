@@ -19,6 +19,7 @@ import dev.klaiber.cirrus.domain.model.ElevenLabsModel
 import dev.klaiber.cirrus.domain.model.ModelInfo
 import dev.klaiber.cirrus.domain.model.SpeechEngine
 import dev.klaiber.cirrus.domain.model.ThemeMode
+import dev.klaiber.cirrus.domain.spotify.SpotifySession
 import dev.klaiber.cirrus.domain.userMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -61,6 +62,7 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val conversationRepository: ConversationRepository,
     private val modelRepository: ModelRepository,
+    private val spotify: SpotifySession,
     mcpServerRepository: McpServerRepository,
     memoryRepository: MemoryRepository,
     agentRepository: AgentRepository,
@@ -194,6 +196,68 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setShowStarterPrompts(enabled) }
     }
 
+    fun setWriteToolsAllowed(allowed: Boolean) {
+        viewModelScope.launch { settingsRepository.setWriteToolsAllowed(allowed) }
+    }
+
+    fun setMemoryEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setMemoryEnabled(enabled) }
+    }
+
+    fun setMemoryConsolidationEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setMemoryConsolidationEnabled(enabled) }
+    }
+
+    fun setNotificationToolEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setNotificationToolEnabled(enabled) }
+    }
+
+    /**
+     * Records the switch and what Android actually said about the permission.
+     *
+     * Both, because they are different facts: the user can want location on and Android can still
+     * have refused it, and the settings catalogue exists to tell those two apart rather than
+     * sending somebody to a switch that is already in the right position.
+     */
+    fun setLocationEnabled(enabled: Boolean, permissionGranted: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setLocationPermissionGranted(permissionGranted)
+            settingsRepository.setLocationEnabled(enabled && permissionGranted)
+        }
+    }
+
+    fun setSpotifyClientId(clientId: String) {
+        viewModelScope.launch { settingsRepository.setSpotifyClientId(clientId) }
+    }
+
+    fun setSpotifyEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setSpotifyEnabled(enabled) }
+    }
+
+    fun disconnectSpotify() {
+        viewModelScope.launch {
+            spotify.signOut()
+            settingsRepository.setSpotifyEnabled(false)
+        }
+    }
+
+    /**
+     * Builds the sign-in URL, or null when there is no client ID to build it from.
+     *
+     * Returned rather than opened here: launching a browser needs an Activity, and a ViewModel that
+     * held one would outlive it.
+     */
+    suspend fun beginSpotifySignIn(): String? =
+        if (spotify.canSignIn) spotify.beginSignIn().url else null
+
+    fun setShellToolsEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setShellToolsEnabled(enabled) }
+    }
+
+    fun setAppControlEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setAppControlEnabled(enabled) }
+    }
+
     fun saveGitHubToken(token: String) {
         viewModelScope.launch { settingsRepository.setGitHubToken(token) }
     }
@@ -206,9 +270,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setGitHubToolsEnabled(enabled) }
     }
 
-    fun setGitHubWritesAllowed(allowed: Boolean) {
-        viewModelScope.launch { settingsRepository.setGitHubWritesAllowed(allowed) }
-    }
 
     fun setVoiceInputEnabled(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setVoiceInputEnabled(enabled) }

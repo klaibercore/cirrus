@@ -31,6 +31,14 @@ val MCP_CATALOG: List<McpCatalogEntry> = listOf(
             "attach this only if you want the server's own set instead.",
     ),
     McpCatalogEntry(
+        label = "Spotify",
+        url = "https://mcp.spotify.com/mcp",
+        summary = "Search, playlists and playback through Spotify's own server.",
+        tokenHint = "Signs you in through Spotify. Cirrus also ships native Spotify tools, which " +
+            "need only a client ID and no server in between — attach this if you would rather " +
+            "use Spotify's own set, or if the native ones are not enough.",
+    ),
+    McpCatalogEntry(
         label = "Sentry",
         url = "https://mcp.sentry.dev/mcp",
         summary = "Errors, issues and releases from your Sentry projects.",

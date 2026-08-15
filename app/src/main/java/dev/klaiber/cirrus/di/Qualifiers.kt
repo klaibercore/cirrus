@@ -41,3 +41,16 @@ annotation class McpHttp
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class ElevenLabsHttp
+
+/**
+ * The HTTP client for Spotify.
+ *
+ * Its own again, for the reason every one of these has its own: no other service's key may travel
+ * to it. This one carries an extra rule the others do not need — the bearer token is attached only
+ * for api.spotify.com. The token endpoint at accounts.spotify.com authenticates with the PKCE
+ * verifier in the form body, and sending an expired bearer token alongside it is how a refresh
+ * fails with 401 at exactly the moment it is trying to fix a 401.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class SpotifyHttp

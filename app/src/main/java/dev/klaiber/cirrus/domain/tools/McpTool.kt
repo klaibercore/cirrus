@@ -27,6 +27,21 @@ class McpTool(
 
     override val name: String = qualifiedName(server, descriptor.name)
 
+    /**
+     * Unless the server has said otherwise, assume it changes something.
+     *
+     * This is the one gate in the app that defaults to closed, and it should. Every other tool here
+     * was written in this repository, so what it does is knowable by reading it; an MCP tool is an
+     * arbitrary function on somebody else's server, described by a sentence that server wrote about
+     * itself. "Nobody told us it was destructive" is not evidence that it is not.
+     *
+     * The cost is real and worth stating: a server whose tools carry no annotations — most of them,
+     * today — offers nothing until the user allows write actions. That is a deliberate trade of
+     * convenience for the property that a freshly attached server cannot change anything on its own
+     * say-so, and the MCP servers screen shows which tools are affected so it is not a mystery.
+     */
+    override val writes: Boolean = descriptor.readOnly != true
+
     override val definition: JsonElement = buildJsonObject {
         put("type", "function")
         put(

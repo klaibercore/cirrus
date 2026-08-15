@@ -58,8 +58,9 @@ already know what a context window is, and gets out of your way.
   because it asks `/api/show` rather than guessing from the name.
 - **Every setting explains itself.** Long-press any control, or tap the `?`. No more wondering
   whether `min_p` and `top_k` should both be on. (They shouldn't.)
-- **Tools that matter.** Web search, page fetch, and a full GitHub integration that reads your
-  private repositories, triages issues, reviews pull requests and commits files.
+- **Tools that matter.** Web search and page fetch, a full GitHub integration, Spotify, a
+  sandboxed shell, the clock and calendar, your location, and any MCP server you attach — each one
+  behind a switch, and everything that writes behind one more.
 - **Your secrets stay on the device**, encrypted with a key that never leaves the Android Keystore.
 
 ---
@@ -74,16 +75,22 @@ already know what a context window is, and gets out of your way.
 | 🤔 **Reasoning traces** | `thinking` deltas stream into a collapsible section, with effort control for models that support it. |
 | 🔧 **Tool calling** | Bounded multi-round tool loops. Web search, page fetch and the GitHub tools. Spend the round budget and the model is asked once more without tools, so a turn ends on an answer rather than on a call nobody ran. |
 | 🐙 **GitHub integration** | Read code in public *and* private repos, search, browse trees, read issues and PR diffs. Opening issues, commenting, posting reviews and committing files are behind a separate, default-off switch. |
-| 🔌 **MCP client** | Model Context Protocol client over both HTTP transports (streamable and SSE), with the transport auto-detected. Not yet reachable from the UI — see below. |
+| 🔌 **MCP servers** | Attach any Model Context Protocol server and its tools join the model's set. Both HTTP transports (streamable and SSE), auto-detected, each server's token sent only to it. A short catalogue of known servers — GitHub, Spotify, Sentry, Linear — makes attaching one a tap rather than a URL to go and find. |
+| 🎵 **Spotify** | Search, your playlists and saved music, what is playing, playback control, and playlist edits. Signs in with OAuth/PKCE using a client ID you create, so no secret ships in the app. Playback control needs Premium — when Spotify refuses, Cirrus falls back to the phone's own media buttons, which work on any account and with any player. |
+| 🖥️ **A shell, safely** | Run commands on the phone for the small mechanical jobs. What may run is decided *before* anything does, from an allow list you can read in one sitting: no unlisted program, no absolute paths, no `..`, no `$(…)`, nothing that runs another program on the command's behalf. The working directory is a scratch folder in Cirrus's own cache, and it is the entire reachable world. |
+| 🕰️ **The clock, the calendar, this phone** | A model has no clock, so left alone it answers "how long until Friday?" from the year it was trained in. It can now ask: the exact time in your zone, a month laid out, and what this device actually is — down to which shell programs this particular phone ships with. |
+| 📍 **Where you are** | For the weather, what is nearby, travel time. Coarse accuracy only, by design rather than as a fallback, and off until you turn it on. Never in the background, and never from a scheduled agent. |
+| 🔐 **One switch for write actions** | Anything that changes something outside Cirrus and cannot be undone from inside it — a GitHub issue, a commit, a Spotify playlist, an MCP tool that has not declared itself read-only — is behind a single default-off switch. Reversible things, like pausing music, are not writes and stay available. |
+| 🧭 **The model knows its own settings** | Refused a tool because a switch is off, it is told *which* switch and where to find it, instead of concluding the app cannot do the thing at all and telling you so. |
 | 🎙️ **Voice dictation** | Speak into the composer with a live level meter. Prefers Android's on-device recogniser, so audio need never leave the phone. |
-| ✍️ **Markdown that survives streaming** | A hand-written CommonMark subset tolerant of half-finished input, with a real lexer for syntax highlighting — not regex passes that mistake `//` inside a string for a comment. LaTeX maths is mapped to Unicode, so `$O(n \log n)$` reads as maths rather than as source. |
+| ✍️ **Markdown that survives streaming** | A hand-written CommonMark subset tolerant of half-finished input, with a real lexer for syntax highlighting — not regex passes that mistake `//` inside a string for a comment. LaTeX maths is *typeset* — real fractions, radicals and stretched delimiters, laid out by TeX's rules in miniature — while still copying as text. |
 | 🏷️ **Self-maintaining titles** | Threads are named from their content and re-summarised as they grow, throttled so a long session costs a handful of short requests. Rename one yourself and it is never overwritten. |
 | 🌿 **Branch any conversation** | Fork from any message, edit-and-resend, regenerate, export to Markdown. |
 | 🎛️ **Full sampling control** | Temperature, top-p, top-k, min-p, penalties, seed, `num_ctx`, `num_predict`, stop sequences, JSON schema output, `keep_alive` — each independently overridable, each explained. |
-| 🎨 **Material 3 + dynamic colour** | Follows your wallpaper on Android 12+. Light, dark, or system. |
+| 🎨 **A design system, not a theme** | Monochrome by design, after ollama.com: hairline borders instead of shadows, a full pill on anything pressable, two radii, and a rounded display face over the platform's own body face. No dynamic colour — deriving a scheme from the wallpaper is precisely destructive of a design that committed to zero chroma. |
 | ⏰ **Agents that run without you** | A prompt on a schedule — a morning briefing, a Friday review, a nightly watch on something. Every attempt is recorded with its duration, tool calls and token count, so an agent that has been failing all week says so instead of showing you last Tuesday. Their answers are real threads you can read, branch and reply to, kept out of your conversation list until you do. |
 | 🚀 **A setup that proves itself** | A first-run wizard that walks from "where are your models?" to a working request, links out to create the key, and ends by offering an agent to start with. It can be skipped, and re-run later from Settings. |
-| 🔒 **No telemetry, ever** | No analytics, no crash reporter, no third-party backend. Two network destinations, both yours. |
+| 🔒 **No telemetry, ever** | No analytics, no crash reporter, no third-party backend. Every network destination is one you switched on yourself, and each has its own HTTP client so no service can ever be handed another's key. |
 
 ---
 
@@ -298,22 +305,32 @@ the serialization plugin must all track that same release — see `gradle/libs.v
 
 ## Privacy
 
-Cirrus talks to exactly two kinds of endpoint, both of which you choose:
+Cirrus talks only to endpoints you have switched on yourself:
 
 1. **The Ollama host you configure** — your own machine, or `ollama.com`.
-2. **`api.github.com`** — only if you enable the GitHub tools.
+2. **`api.github.com`** — only with the GitHub tools enabled and a token saved.
+3. **`api.spotify.com` and `accounts.spotify.com`** — only once you have connected Spotify.
+4. **`api.elevenlabs.io`** — only if you choose it as the read-aloud voice.
+5. **Any MCP server you attach**, and only the one whose tool is being called.
 
-Plus any MCP server you explicitly attach, once that is reachable from the UI.
+Each has its own HTTP client, so a credential can never travel to a service it was not meant for —
+the interceptor that attaches your GitHub token exists on the GitHub client alone, and MCP servers
+get a client that attaches nothing of its own.
 
-Your API key and GitHub token are stored in DataStore, encrypted with AES-GCM using a key
-generated in and never released from the Android Keystore. Conversations, messages and attachments
+Nothing else leaves the phone. The shell runs in a scratch folder inside Cirrus's cache and cannot
+reach out; the clock, calendar, device summary, media controls and memory are entirely local; and
+location is read only when a tool asks for it, at coarse accuracy, never in the background.
+
+Your API key, GitHub token, ElevenLabs key and Spotify tokens are stored in DataStore, encrypted
+with AES-GCM using a key generated in and never released from the Android Keystore. Conversations, messages and attachments
 live in an app-private Room database and are never uploaded.
 
 The permissions are `INTERNET`, plus `FOREGROUND_SERVICE`/`FOREGROUND_SERVICE_DATA_SYNC` and
 `WAKE_LOCK` — which is how a reply keeps streaming after you leave the screen, and which are used
 only while one is. `POST_NOTIFICATIONS` is asked for at your first generation, and only buys the
 notification that shows it running; `RECORD_AUDIO` is requested the first time you tap the
-microphone.
+microphone, and `ACCESS_COARSE_LOCATION` when you turn Location on. There is deliberately no
+background-location permission.
 
 There is no analytics SDK, no crash reporter, and no telemetry of any kind. See
 [SECURITY.md](SECURITY.md) for the full threat model.

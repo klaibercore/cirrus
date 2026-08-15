@@ -7,6 +7,7 @@ import dagger.hilt.android.HiltAndroidApp
 import dev.klaiber.cirrus.domain.TurnController
 import dev.klaiber.cirrus.domain.agents.AgentScheduler
 import dev.klaiber.cirrus.domain.memory.ConsolidationScheduler
+import dev.klaiber.cirrus.domain.tools.shell.ShellWorkspace
 import dev.klaiber.cirrus.service.GenerationService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,8 @@ class CirrusApp : Application(), Configuration.Provider {
     @Inject lateinit var agentScheduler: AgentScheduler
 
     @Inject lateinit var consolidationScheduler: ConsolidationScheduler
+
+    @Inject lateinit var shellWorkspace: ShellWorkspace
 
     /**
      * Workers are constructed by Hilt, not by WorkManager's default factory.
@@ -61,5 +64,10 @@ class CirrusApp : Application(), Configuration.Provider {
             agentScheduler.syncAll()
             consolidationScheduler.sync()
         }
+
+        // The shell is told to clean up after itself, and mostly does. This is the backstop for the
+        // times it does not: a session starts with an empty workspace whatever the last one left
+        // behind, so scratch files can never accumulate across runs of the app.
+        scope.launch(Dispatchers.IO) { shellWorkspace.clear() }
     }
 }

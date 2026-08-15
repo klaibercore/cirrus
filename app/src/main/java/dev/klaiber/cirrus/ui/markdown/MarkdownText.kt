@@ -254,6 +254,15 @@ private fun ListRow(
     }
 }
 
+/**
+ * Bold rather than SemiBold, at every level.
+ *
+ * The bottom three levels are set at or below the body size — `####` is 16sp, exactly what the
+ * paragraph under it is — so weight is the only thing separating a heading from the text it is
+ * heading. SemiBold in the display face was not enough of a step to do that on its own, and a
+ * heading you have to squint at is not performing its one job. Inline `**strong**` is a further
+ * step again, so a bold word inside a heading still reads as emphasised.
+ */
 @Composable
 private fun headingStyle(level: Int) = when (level) {
     1 -> MaterialTheme.typography.headlineMedium
@@ -261,7 +270,7 @@ private fun headingStyle(level: Int) = when (level) {
     3 -> MaterialTheme.typography.titleLarge
     4 -> MaterialTheme.typography.titleMedium
     else -> MaterialTheme.typography.titleSmall
-}.copy(fontWeight = FontWeight.SemiBold)
+}.copy(fontWeight = FontWeight.Bold)
 
 @Composable
 private fun MarkdownTable(
