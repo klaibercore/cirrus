@@ -255,6 +255,11 @@ fun ChatScreen(
         lastMessage?.isStreaming,
     )
     LaunchedEffect(tailSignature) {
+        // Sending is itself a decision to be at the bottom — nobody types a message in order to
+        // carry on reading something further up — so a turn of your own takes following back.
+        // Checked here rather than in an effect of its own so it cannot race the scroll below.
+        if (lastMessage?.role == Role.USER) followTail = true
+
         if (followTail && visibleMessages.isNotEmpty()) {
             // Not animate*: this restarts on every token, and a cancelled animation per token is
             // both wasted work and visibly jittery.

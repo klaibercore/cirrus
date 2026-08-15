@@ -55,7 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   decided by asking "are we at the bottom?", and a streaming answer moves the bottom away from the
   reader on every token — so the test said "the reader has scrolled up" several times a second at a
   reader who had not moved, which also made the button flicker in and out. Following is now given up
-  only on a scroll backwards and taken up again only on reaching the end, and the tail is followed
+  only on a scroll backwards and taken up again only on reaching the end — or on sending a message,
+  since nobody types one in order to carry on reading something further up. The tail is followed
   through tool calls too, which change a turn's height without changing a character of its text.
 
 ## [1.5.1] - 2026-08-15
