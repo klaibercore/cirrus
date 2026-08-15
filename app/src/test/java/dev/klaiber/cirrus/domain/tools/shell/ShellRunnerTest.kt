@@ -118,6 +118,62 @@ class ShellRunnerTest {
         assertTrue(result.output.length <= ShellRunner.MAX_OUTPUT_CHARS)
     }
 
+    /**
+     * Both ends, not the first 8,000 characters.
+     *
+     * Nearly every text job here ends in its answer — a `wc` after a pipeline, the last hunk of a
+     * diff, the tail of a sort — so a cap that keeps only the head throws away the line the command
+     * was run for, and the model runs the whole thing again with `tail` bolted on.
+     */
+    @Test
+    fun `a long output keeps its last line as well as its first`() = runBlocking {
+        val result = runner.run("seq 1 20000", timeoutMs = 20_000)
+
+        assertTrue(result.outputTruncated)
+        assertTrue(result.omittedChars > 0)
+        assertTrue("the head is missing", result.output.startsWith("1\n2\n3\n"))
+        assertTrue("the tail is missing", result.output.endsWith("20000"))
+        assertTrue("the gap should be declared", result.output.contains("characters omitted"))
+    }
+
+    @Test
+    fun `text arrives on stdin without being quoted into the command`() = runBlocking {
+        val result = runner.run("wc -w", input = "one two three four")
+
+        assertEquals(0, result.exitCode)
+        assertEquals("4", result.output.trim())
+    }
+
+    /**
+     * The reason stdin exists at all: this text would be refused by the substitution check and
+     * mangled by the quoting if it had to travel as part of the command line.
+     */
+    @Test
+    fun `stdin carries characters a command line could not`() = runBlocking {
+        val result = runner.run("cat", input = "cost: $(50) `back` \"quoted\"")
+
+        assertEquals("cost: $(50) `back` \"quoted\"", result.output)
+    }
+
+    /** A command that stops reading is entitled to; the broken pipe is not an error here. */
+    @Test
+    fun `a command that ignores its input still returns`() = runBlocking {
+        val result = runner.run("head -1", input = (1..5_000).joinToString("\n"))
+
+        assertEquals("1", result.output.trim())
+        assertFalse(result.timedOut)
+    }
+
+    @Test
+    fun `a command runs in the topic it was given`() = runBlocking {
+        val topic = workspace.topicDirectory("expenses")
+
+        runner.run("echo written > note.txt", directory = topic)
+
+        assertTrue(File(topic, "note.txt").exists())
+        assertEquals(listOf("note.txt"), workspace.topicEntries("expenses").map { it.path })
+    }
+
     /** Android's `date` answers in UTC unless TZ is set, which would be a quietly wrong clock. */
     @Test
     fun `the environment is built rather than inherited`() = runBlocking {

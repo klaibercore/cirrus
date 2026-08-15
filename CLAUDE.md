@@ -33,7 +33,7 @@ app/src/main/java/dev/klaiber/cirrus/
 ├── ui/                     # Compose screens + components
 │   ├── CirrusApp.kt        # NavHost + modal drawer (chat / settings routes)
 │   ├── chat/               # ChatScreen, ChatViewModel, ChatUiState, ConversationExporter
-│   │   └── components/     # MessageItem, Composer, ModelPickerSheet, ParametersSheet, ...
+│   │   └── components/     # MessageItem, ToolActivity, Composer, ModelPickerSheet, ...
 │   ├── conversations/       # ConversationDrawer + ConversationsViewModel
 │   ├── memory/             # MemoryScreen + MemoryViewModel (browse, edit, pin, retire)
 │   ├── agents/             # AgentsScreen, AgentEditorSheet (AgentDraft), history/template sheets
@@ -115,9 +115,23 @@ app/src/main/java/dev/klaiber/cirrus/
   a lone command but forks for a pipeline, and on Linux the surviving grandchild holds the write end
   of the pipe, so neither `destroyForcibly` nor closing the stream unblocks it. The deadline is
   therefore enforced on `Thread.join`, which *is* interruptible. macOS kills the whole group and
-  hides all of this, which is why it passed on a laptop and hung for the full command on CI. The environment is built rather than inherited, because Android's
-  `date` reports UTC unless `TZ` is set. The workspace is wiped at every process start, trimmed
-  when it grows, and the model is told to empty it before finishing.
+  hides all of this, which is why it passed on a laptop and hung for the full command on CI. Stdin
+  is written on a daemon thread for the mirror-image reason: a pipe write blocks just as
+  uninterruptibly once the buffer fills, so a command that never reads its input would hold the turn
+  open past its own deadline. The environment is built rather than inherited, because Android's
+  `date` reports UTC unless `TZ` is set. Output is capped at both ends rather than the first 8,000
+  characters — most text jobs here end in their answer (`wc` after a pipeline, the last hunk of a
+  diff), so a head-only cap throws away the line the command was run for.
+- **Topics** — the workspace is divided by job, and every command runs inside one. A single flat
+  scratch directory across a long session becomes `out.txt`, `out2.txt`, `tmp.txt`, and the model
+  starts reading the wrong one; a topic also *isolates*, since `..` is refused and one job therefore
+  cannot reach another's files. Names are normalised rather than rejected (`Invoice Totals (Q3)` →
+  `invoice-totals-q3`), which is also what stops a topic — a tool argument, so never seen by
+  `CommandPolicy` — naming somewhere else. Cleanup is arranged at three levels because a rule the
+  model has to remember at the end of a session is the rule it will not remember: `clear` on process
+  start, `sweep` before every command (idle topics, and a cap on how many can be live), and
+  `clean_workspace` for the model to call when a job is actually over. A sweep says what it took, so
+  a missing file is a sentence rather than a puzzle.
 - **`SuggestionGenerator`** — asks the configured model for the four openers on an empty chat and
   for agent ideas, telling it exactly which tools this install has so nothing is suggested that
   would fail on the first tap. Generated once per process per capability signature. The static

@@ -7,7 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Text goes into a shell command through stdin now, rather than being quoted into it.**
+  `run_command` takes an `input` argument, and it is the difference between counting the words in a
+  paragraph and writing a `printf` puzzle with three ways to fail before the command runs: the
+  command line is length-capped, and a `$` or a backtick anywhere in the text is refused by the
+  substitution check. `wc -w`, `sort | uniq -c | sort -rn`, `sha256sum` and `tee` now work on text
+  out of the conversation with no escaping at all.
+- **Scratch files are organised by topic.** Each job — `expenses`, `log-counts` — gets its own
+  directory, named by the `topic` argument and reused across the commands of that job. One flat
+  scratch directory across a long session became `out.txt`, `out2.txt`, `tmp.txt`, and the model
+  started reading the wrong one. Because `..` is refused, a topic isolates as well as organises: a
+  command working on one job cannot touch another's files even by accident. `clean_workspace` takes
+  a topic too, so finishing a job no longer means clearing everything or clearing nothing.
+- **The workspace cleans itself up.** Topics nothing has touched for 45 minutes are swept before the
+  next command, and there is a cap on how many can be live at once — the second rule is the one that
+  matters, because a session that opens a fresh topic every few minutes stays inside the idle window
+  forever. A sweep reports what it took, so a file that is no longer there is a sentence the model
+  can act on rather than a puzzle it spends a turn on.
+- `join`, `shuf` and `sha512sum` join the allowed programs, and every command's reply now lists the
+  files in its topic — the next command is nearly always about one of them, and the alternative was
+  a round trip spent on `ls`.
+
+### Changed
+
+- **A turn's tool calls collapse into one panel.** A turn that read three files and searched twice
+  put five outlined cards between the question and the answer, each as prominent as the reply
+  itself. That is the wrong weight: tool calls are provenance, and provenance belongs behind one
+  line you can open. The panel says how many steps ran, which tools they used and how long they
+  took, is open while they run and shut once the answer lands, and shows a failure on its own line
+  so nothing is hidden that matters. A single call is still a single row — wrapping one call in a
+  group header only means reading its name twice.
+- **Long command output keeps both ends.** Nearly every text job here finishes with its answer — a
+  `wc` after a pipeline, the last hunk of a diff, the tail of a sort — so a cap that kept the first
+  8,000 characters threw away the line the command was run for, and the model ran the whole thing
+  again with `tail` bolted on. The middle is dropped instead, and the reply says how much.
+
+### Fixed
+
+- **"Jump to latest" landed in the wrong place, and sometimes did nothing at all.** Two faults on
+  top of each other. The index it scrolled to counted tool and system messages, which are not rows
+  in the transcript, so it aimed short of the end; and `scrollToItem` aligns an item's *top* with
+  the viewport, which for an answer longer than the screen is the first line of the reply rather
+  than the bottom of the conversation.
+- **The transcript stopped following a reply that was still arriving.** Whether to follow was
+  decided by asking "are we at the bottom?", and a streaming answer moves the bottom away from the
+  reader on every token — so the test said "the reader has scrolled up" several times a second at a
+  reader who had not moved, which also made the button flicker in and out. Following is now given up
+  only on a scroll backwards and taken up again only on reaching the end, and the tail is followed
+  through tool calls too, which change a turn's height without changing a character of its text.
 
 ## [1.5.1] - 2026-08-15
 

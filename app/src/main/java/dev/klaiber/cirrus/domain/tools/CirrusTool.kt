@@ -366,11 +366,12 @@ class ToolRegistry @Inject constructor(
         // to a build that has none.
         if (!settings.shellToolsEnabled || deviceTools.shell.isEmpty()) return null
         return "You can run shell commands on this phone with run_command. It works inside a " +
-            "private scratch workspace and can reach nothing outside it. Two rules hold for the " +
-            "whole conversation: be non-destructive — read before you write, and never remove a " +
-            "file you did not create — and clean up after yourself by calling clean_workspace " +
-            "before you finish, whenever you have written anything. Use get_datetime rather than " +
-            "assuming today's date."
+            "private scratch workspace and can reach nothing outside it. Pass text to work on in " +
+            "its \"input\" argument rather than quoting it into the command, and name a \"topic\" " +
+            "per job so its files stay together. Two rules hold for the whole conversation: be " +
+            "non-destructive — read before you write, and never remove a file you did not create " +
+            "— and clean up after yourself by calling clean_workspace before you finish, whenever " +
+            "you have written anything. Use get_datetime rather than assuming today's date."
     }
 
 }
