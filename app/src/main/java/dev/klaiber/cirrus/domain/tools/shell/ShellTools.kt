@@ -112,9 +112,6 @@ class RunCommandTool @Inject constructor(
             ?: return@shellTool errorJson("missing required argument: command")
 
         val topic = ShellWorkspace.topicName(arguments.string("topic"))
-        // Before the command rather than after it: the point is that this command starts against a
-        // tidy workspace, and a sweep that ran afterwards would report a state nobody asked about.
-        val swept = workspace.sweep()
 
         when (val verdict = CommandPolicy.check(command)) {
             is CommandVerdict.Refused -> buildJsonObject {
@@ -124,6 +121,14 @@ class RunCommandTool @Inject constructor(
             }.toString()
 
             is CommandVerdict.Allowed -> {
+                // Inside this branch, and before the command rather than after it. Before, because
+                // the point is that the command starts against a tidy workspace and a sweep run
+                // afterwards would report a state nobody asked about. Inside, because a sweep has
+                // to be announced in the same reply it happened in — and a refusal has no room to
+                // say so, which would leave files quietly gone with nothing in the transcript to
+                // explain it. A command that never ran is also no reason to tidy up after one.
+                val swept = workspace.sweep()
+
                 val timeout = arguments.int("timeout_seconds")
                     ?.let { it * 1_000L }
                     ?.coerceIn(1_000L, ShellRunner.MAX_TIMEOUT_MS)
