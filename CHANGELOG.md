@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.5.0] - 2026-08-15
+
 ### Added
 
 - **Spotify.** Search the catalogue, read your playlists, saved music and the artists you actually
@@ -384,7 +388,8 @@ do things.
   or bridges its tools into the registry.
 - LaTeX is mapped to Unicode, not typeset. There is no layout, so fractions render as `a/b`.
 
-[Unreleased]: https://github.com/klaibercore/cirrus/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/klaibercore/cirrus/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/klaibercore/cirrus/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/klaibercore/cirrus/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/klaibercore/cirrus/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/klaibercore/cirrus/compare/v1.2.0...v1.3.0
