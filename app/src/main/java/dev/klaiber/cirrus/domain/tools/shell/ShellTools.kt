@@ -8,6 +8,7 @@ import dev.klaiber.cirrus.domain.tools.github.intParam
 import dev.klaiber.cirrus.domain.tools.github.string
 import dev.klaiber.cirrus.domain.tools.github.stringParam
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
@@ -134,7 +135,13 @@ class RunCommandTool @Inject constructor(
                     ?.coerceIn(1_000L, ShellRunner.MAX_TIMEOUT_MS)
                     ?: ShellRunner.DEFAULT_TIMEOUT_MS
 
-                val input = arguments.string("input")
+                // Deliberately not `string()`, which treats a blank as absent. That is right for a
+                // name or an id and wrong for text being measured: "how many blank lines are in
+                // this?" is a real question, and the answer must not depend on the text having
+                // something other than whitespace in it.
+                val input = (arguments["input"] as? JsonPrimitive)
+                    ?.takeIf { it !is JsonNull }
+                    ?.content
                 val result = runner.run(
                     command = command,
                     timeoutMs = timeout,
@@ -166,9 +173,11 @@ class RunCommandTool @Inject constructor(
                     if (result.outputTruncated) {
                         put(
                             "truncated",
-                            "Output was long: ${result.omittedChars} characters from the middle " +
-                                "were dropped, and both ends kept. Narrow the command — head, " +
-                                "grep, sort, wc — rather than running it again.",
+                            "Output was long, so ${result.omittedChars} characters were dropped " +
+                                "from the MIDDLE. The beginning and the end are both above — " +
+                                "there is no need to run this again with head or tail. If you " +
+                                "need what was in the middle, narrow the command with grep, sort " +
+                                "or wc.",
                         )
                     }
                     if (result.timedOut) {
