@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.5.1] - 2026-08-15
+
+### Fixed
+
+- **A shell command that would not finish could hold a turn open past its timeout.** Only for
+  pipelines, and only on Android and Linux, which is why it survived 1.5.0: `sh -c` runs a lone
+  command by becoming it, so killing the process killed the command, but it forks for a pipeline
+  and the surviving half keeps the output pipe open. The read then blocked for as long as the
+  command cared to run, with the deadline doing nothing — the case the deadline exists for. Cirrus
+  now stops waiting rather than trying to end the read, which cannot be done from outside on Linux
+  by any means: not interruption, not killing the process, not closing the stream.
+
 ## [1.5.0] - 2026-08-15
 
 ### Added
@@ -388,7 +400,8 @@ do things.
   or bridges its tools into the registry.
 - LaTeX is mapped to Unicode, not typeset. There is no layout, so fractions render as `a/b`.
 
-[Unreleased]: https://github.com/klaibercore/cirrus/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/klaibercore/cirrus/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/klaibercore/cirrus/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/klaibercore/cirrus/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/klaibercore/cirrus/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/klaibercore/cirrus/compare/v1.3.0...v1.3.1
