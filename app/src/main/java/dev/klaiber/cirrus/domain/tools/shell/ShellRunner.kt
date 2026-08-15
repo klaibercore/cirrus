@@ -73,6 +73,7 @@ class ShellRunner(
             }
 
             val expired = AtomicBoolean(false)
+            val stdout = process.inputStream
             val watchdog = launch(Dispatchers.IO) {
                 try {
                     delay(timeoutMs)
@@ -80,6 +81,13 @@ class ShellRunner(
                 } finally {
                     // Runs on cancellation too, which is what makes a stopped turn kill the process.
                     if (process.isAlive) process.destroyForcibly()
+                    // Killing the shell is not always enough. `sh -c` is free to fork rather than
+                    // exec — which one you get depends on the shell and on the shape of the command,
+                    // and a pipeline is the case most likely to fork — and a surviving grandchild
+                    // inherits the write end of this pipe. The read would then block past the
+                    // deadline the watchdog exists to enforce. Closing the stream from here ends
+                    // the read on any platform, whoever is still holding the other end.
+                    runCatching { stdout.close() }
                 }
             }
 
@@ -88,16 +96,21 @@ class ShellRunner(
                     process.outputStream.close()
                     val text = StringBuilder()
                     var truncated = false
-                    process.inputStream.bufferedReader().use { reader ->
-                        val buffer = CharArray(READ_BUFFER)
-                        while (true) {
-                            val read = reader.read(buffer)
-                            if (read < 0) break
-                            val room = MAX_OUTPUT_CHARS - text.length
-                            if (room > 0) {
-                                text.appendRange(buffer, 0, minOf(read, room))
+                    // An IOException here is the watchdog closing the stream underneath the read,
+                    // which is a deadline rather than a failure: whatever was collected before it
+                    // is still the command's output, and is still worth returning.
+                    runCatching {
+                        stdout.bufferedReader().use { reader ->
+                            val buffer = CharArray(READ_BUFFER)
+                            while (true) {
+                                val read = reader.read(buffer)
+                                if (read < 0) break
+                                val room = MAX_OUTPUT_CHARS - text.length
+                                if (room > 0) {
+                                    text.appendRange(buffer, 0, minOf(read, room))
+                                }
+                                if (read > room) truncated = true
                             }
-                            if (read > room) truncated = true
                         }
                     }
                     Collected(text.toString(), truncated, process.waitFor())

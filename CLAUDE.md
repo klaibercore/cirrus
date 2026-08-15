@@ -110,8 +110,11 @@ app/src/main/java/dev/klaiber/cirrus/
   behalf (`sh`, `xargs`, `awk`, `env`, `find -exec`) is refused by name. Pure Kotlin; carries tests.
 - **`ShellRunner` / `ShellWorkspace`** — the process, and the one directory it may write to. A
   watchdog coroutine kills the process at the deadline *and* in its `finally`, so a cancelled turn
-  takes the process with it; killing is what unblocks the read, since a blocking read on a pipe
-  ignores thread interruption. The environment is built rather than inherited, because Android's
+  takes the process with it. Killing is not sufficient on its own, though, and the watchdog also
+  **closes the output stream**: `sh -c` execs a lone command but forks for a pipeline, and a
+  surviving grandchild inherits the write end of the pipe, so the read blocks straight past the
+  deadline. Whether you get a fork depends on the shell, which means it depends on the platform —
+  this passed on macOS and hung for the full command on Linux. The environment is built rather than inherited, because Android's
   `date` reports UTC unless `TZ` is set. The workspace is wiped at every process start, trimmed
   when it grows, and the model is told to empty it before finishing.
 - **`SuggestionGenerator`** — asks the configured model for the four openers on an empty chat and
@@ -419,6 +422,8 @@ Unit tests live in `app/src/test/java/...` mirroring the main package. Run with
   hence the `shell.available`/`shell.missing` block in `system_info`. The honest answer for someone
   who wants a package manager is a terminal app with its own userland, which `install_app` can offer
   and nothing here can be.
+- A blocking read on a pipe **ignores thread interruption**, so nothing short of ending the stream
+  will unblock it — which is why the watchdog closes it rather than trusting `destroyForcibly`.
 - A **refusal is not "Unknown tool"**. `ToolRegistry.explainRefusal` names the switch that is in the
   way and where it lives, because a model that cannot tell "this app cannot do that" from "not until
   somebody flips a switch" guesses the first one — and then tells the user their app lacks a feature

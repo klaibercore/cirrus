@@ -91,6 +91,25 @@ class ShellRunnerTest {
         assertTrue("should be reported as a timeout, not as a clean exit", result.timedOut)
     }
 
+    /**
+     * The same, for a command the shell may not have exec'd.
+     *
+     * `sh -c` execs a lone command and becomes it, so killing the process kills the command. Give
+     * it a pipeline and it forks instead, and the grandchildren inherit the write end of the pipe —
+     * so killing the shell leaves the read blocked on a pipe nobody is going to close. Which of the
+     * two you get varies by shell, which means it varies by platform: this passed on a laptop whose
+     * /bin/sh is bash and failed on a runner whose /bin/sh is dash.
+     */
+    @Test
+    fun `a hung pipeline is killed even when the shell forked`() = runBlocking {
+        val started = System.currentTimeMillis()
+        val result = runner.run("sleep 30 | cat", timeoutMs = 2_000)
+        val elapsed = System.currentTimeMillis() - started
+
+        assertTrue("the read must not outlive the deadline, took ${elapsed}ms", elapsed < 15_000)
+        assertTrue("should be reported as a timeout", result.timedOut)
+    }
+
     @Test
     fun `output is capped rather than allowed to fill the context window`() = runBlocking {
         val result = runner.run("yes abcdefghij | head -20000", timeoutMs = 20_000)
