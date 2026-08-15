@@ -593,6 +593,30 @@ fun SettingsSectionScreen(
 
                 SettingsSection.TOOLS -> {
 
+                SwitchRow(
+                    title = "Shell and everyday tools",
+                    subtitle = "The clock, the calendar, this phone's details, and safe commands",
+                    help = "Gives the model four things it otherwise has to guess at: what the " +
+                        "date and time are, how a month is laid out, what this phone is, and a " +
+                        "shell for the small mechanical jobs — counting, sorting, checksums. The " +
+                        "shell runs in a scratch folder inside Cirrus's own cache and can reach " +
+                        "nothing outside it: absolute paths, \"..\" and command substitution are " +
+                        "refused before anything runs, and only a fixed list of programs is " +
+                        "allowed at all. Nothing here touches the network, so it is offered " +
+                        "whatever the per-conversation tools switch says.",
+                    checked = state.settings.shellToolsEnabled,
+                    onCheckedChange = viewModel::setShellToolsEnabled,
+                )
+                SwitchRow(
+                    title = "Apps",
+                    subtitle = "List what is installed, open an app, offer to install one",
+                    help = "Off by default, because this is the one local tool that acts rather " +
+                        "than answers — opening an app puts it in front of whatever you were " +
+                        "reading. It cannot install anything by itself: the most it can do is " +
+                        "open a store page, where Android asks you, as it always does.",
+                    checked = state.settings.appControlEnabled,
+                    onCheckedChange = viewModel::setAppControlEnabled,
+                )
                 StepperRow(
                     title = "Search results",
                     subtitle = "How many results web_search returns per call",

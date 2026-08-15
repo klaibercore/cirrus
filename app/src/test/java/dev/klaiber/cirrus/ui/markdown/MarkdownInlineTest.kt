@@ -28,7 +28,10 @@ class MarkdownInlineTest {
     fun `renders bold`() {
         val result = buildInlineMarkdown("**bold**", styles).annotated
         assertEquals("bold", result.text)
-        assertTrue(result.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+        assertTrue(
+            "strong has to be at least bold; anything lighter does not read as marked",
+            result.spanStyles.any { (it.item.fontWeight?.weight ?: 400) >= FontWeight.Bold.weight },
+        )
     }
 
     @Test
@@ -36,6 +39,25 @@ class MarkdownInlineTest {
         val result = buildInlineMarkdown("*italic*", styles).annotated
         assertEquals("italic", result.text)
         assertTrue(result.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
+    }
+
+    /**
+     * The two have to differ from each other, not only from the paragraph.
+     *
+     * A heavy run and a slanted run are both merely "darker" in peripheral vision, so bold is set
+     * tighter and italic looser. Asserting on the tracking is asserting on that intent: it is the
+     * part a well-meaning tidy-up would delete as noise.
+     */
+    @Test
+    fun `bold and italic are told apart by more than one axis`() {
+        val bold = buildInlineMarkdown("**bold**", styles).annotated.spanStyles.first().item
+        val italic = buildInlineMarkdown("*italic*", styles).annotated.spanStyles.first().item
+
+        assertTrue("bold must not be slanted", italic.fontStyle != bold.fontStyle)
+        assertTrue(
+            "bold tracks tighter than italic",
+            bold.letterSpacing.value < italic.letterSpacing.value,
+        )
     }
 
     @Test
@@ -91,7 +113,9 @@ class MarkdownInlineTest {
     fun `supports nested emphasis`() {
         val result = buildInlineMarkdown("**bold *italic* text**", styles).annotated
         assertEquals("bold italic text", result.text)
-        assertTrue(result.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+        assertTrue(
+            result.spanStyles.any { (it.item.fontWeight?.weight ?: 400) >= FontWeight.Bold.weight },
+        )
         assertTrue(result.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
     }
 

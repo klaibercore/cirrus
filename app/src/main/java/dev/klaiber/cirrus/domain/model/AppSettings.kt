@@ -57,6 +57,26 @@ data class AppSettings(
     val elevenLabsVoiceId: String = "",
     val elevenLabsVoiceName: String = "",
     val elevenLabsModelId: String = ElevenLabsModel.Default.id,
+    /**
+     * Offers the shell and the everyday-work tools: run_command, the clock, the calendar and the
+     * device summary.
+     *
+     * On by default, and not behind the conversation's tools switch, for the same reason memory is
+     * not: none of it leaves the phone, none of it costs a round trip, and a model that cannot find
+     * out what today's date is answers scheduling questions from the year it was trained in. The
+     * shell itself is safe to leave on because [dev.klaiber.cirrus.domain.tools.shell.CommandPolicy]
+     * decides what may run before anything does, and the working directory is a scratch folder in
+     * Cirrus's own cache.
+     */
+    val shellToolsEnabled: Boolean = true,
+    /**
+     * Lets the model list, open and offer to install apps.
+     *
+     * Off by default. Everything else in the local set answers a question; this one acts — it puts
+     * another app in front of whatever the user was reading, and points them at a store page. It
+     * still cannot install anything: Android's own installer asks, every time.
+     */
+    val appControlEnabled: Boolean = false,
     /** Offers the remember/recall/forget tools, and sends pinned memories with every turn. */
     val memoryEnabled: Boolean = true,
     /** Lets a model put something on the notification shade. */

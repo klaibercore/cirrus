@@ -267,40 +267,66 @@ class ChatEngine @Inject constructor(
         model: String,
         transcript: String,
         supportsThinking: Boolean = false,
-    ): String? =
-        runCatching {
-            // Some reasoning models ignore `think: false` and narrate anyway; give them enough
-            // room to get past it and still reach the title.
-            val budget = if (supportsThinking) THINKING_TITLE_TOKEN_BUDGET else TITLE_TOKEN_BUDGET
-            val request = ChatRequestDto(
-                model = model,
-                stream = true,
-                messages = listOf(
-                    MessageDto(
-                        role = Role.SYSTEM.wire,
-                        content = "You write short chat titles. Read the conversation and reply " +
-                            "with a title of at most six words describing what it is about. " +
-                            "Reply with the title alone: no quotes, no markdown, no reasoning, " +
-                            "no punctuation at the end, no preamble.",
-                    ),
-                    MessageDto(
-                        role = Role.USER.wire,
-                        content = transcript.take(TITLE_SOURCE_CHARS),
-                    ),
-                ),
-                // Only meaningful — and only accepted — where the model can actually think.
-                think = if (supportsThinking) JsonPrimitive(false) else null,
-                options = buildJsonObject {
-                    put("temperature", JsonPrimitive(0.2))
-                    put("num_predict", JsonPrimitive(budget))
-                },
-            )
-            val builder = StringBuilder()
-            client.streamChat(request).collect { chunk ->
-                chunk.message?.content?.let(builder::append)
-            }
-            extractTitle(builder.toString())
-        }.getOrNull()
+    ): String? {
+        // Some reasoning models ignore `think: false` and narrate anyway; give them enough
+        // room to get past it and still reach the title.
+        val budget = if (supportsThinking) THINKING_TITLE_TOKEN_BUDGET else TITLE_TOKEN_BUDGET
+        val raw = complete(
+            model = model,
+            system = "You write short chat titles. Read the conversation and reply with a title " +
+                "of at most six words describing what it is about. Reply with the title alone: " +
+                "no quotes, no markdown, no reasoning, no punctuation at the end, no preamble.",
+            user = transcript.take(TITLE_SOURCE_CHARS),
+            supportsThinking = supportsThinking,
+            tokenBudget = budget,
+            temperature = 0.2,
+        ) ?: return null
+        return extractTitle(raw)
+    }
+
+    /**
+     * One question, one answer, outside any conversation.
+     *
+     * The house style for everything Cirrus asks a model *about* the app rather than on the user's
+     * behalf: titles, and the openers on an empty chat. No history, no tools, a hard token budget,
+     * and null on any failure — every caller of this is a cosmetic feature, and none of them may
+     * surface an error to somebody who did not ask a question.
+     *
+     * [supportsThinking] shapes the request rather than the prompt. Ollama turns thinking *on* by
+     * default wherever the capability exists, so a model left to itself spends a title-sized budget
+     * entirely on reasoning and returns empty content; and it rejects `think` outright on a model
+     * without the capability, so the field cannot simply always be sent.
+     */
+    suspend fun complete(
+        model: String,
+        system: String,
+        user: String,
+        supportsThinking: Boolean = false,
+        tokenBudget: Int = TITLE_TOKEN_BUDGET,
+        temperature: Double = 0.2,
+        /** Ollama's structured-output field: "json", or a schema. */
+        format: JsonElement? = null,
+    ): String? = runCatching {
+        val request = ChatRequestDto(
+            model = model,
+            stream = true,
+            messages = listOf(
+                MessageDto(role = Role.SYSTEM.wire, content = system),
+                MessageDto(role = Role.USER.wire, content = user),
+            ),
+            think = if (supportsThinking) JsonPrimitive(false) else null,
+            format = format,
+            options = buildJsonObject {
+                put("temperature", JsonPrimitive(temperature))
+                put("num_predict", JsonPrimitive(tokenBudget))
+            },
+        )
+        val builder = StringBuilder()
+        client.streamChat(request).collect { chunk ->
+            chunk.message?.content?.let(builder::append)
+        }
+        builder.toString().takeIf { it.isNotBlank() }
+    }.getOrNull()
 
     /**
      * Pulls a usable title out of whatever the model produced.
@@ -370,6 +396,10 @@ class ChatEngine @Inject constructor(
         // a memory brief that silently vanishes is worse than one that was never sent.
         val system = listOfNotNull(
             conversation.systemPrompt?.takeIf { it.isNotBlank() },
+            // Rules that outlive a single tool call — how to behave with the shell, and to clean up
+            // before finishing — belong here rather than in a tool description nobody is reading at
+            // the end of a session. Last, so a user's own system prompt still opens the message.
+            toolRegistry.standingBrief()?.takeIf { it.isNotBlank() },
             memoryBrief?.takeIf { it.isNotBlank() },
         ).joinToString("\n\n")
 

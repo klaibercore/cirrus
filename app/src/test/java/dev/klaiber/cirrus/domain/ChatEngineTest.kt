@@ -25,6 +25,7 @@ import dev.klaiber.cirrus.domain.tools.MemoryToolSet
 import dev.klaiber.cirrus.domain.tools.RecallTool
 import dev.klaiber.cirrus.domain.tools.RememberTool
 import dev.klaiber.cirrus.domain.tools.SendNotificationTool
+import dev.klaiber.cirrus.domain.tools.ShellToolSet
 import dev.klaiber.cirrus.domain.tools.ToolRegistry
 import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
@@ -142,6 +143,9 @@ class ChatEngineTest {
                 ForgetTool(memoryRepository),
             ),
             notificationTool = SendNotificationTool(RecordingNotifier()),
+            // The device tools need a Context, so none is offered here. The turn protocol does not
+            // care which tools exist, only that the loop services whatever the model asks for.
+            shellTools = ShellToolSet(device = emptyList(), apps = emptyList()),
             settingsRepository = settingsRepository,
             gitHubCredentials = gitHubCredentials,
         )

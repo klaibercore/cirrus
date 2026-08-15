@@ -85,14 +85,6 @@ fun CirrusApp(
                     scope.launch { drawerState.close() }
                     navController.navigate(Routes.SETTINGS)
                 },
-                onOpenAgents = {
-                    scope.launch { drawerState.close() }
-                    navController.navigate(Routes.AGENTS)
-                },
-                onOpenMemory = {
-                    scope.launch { drawerState.close() }
-                    navController.navigate(Routes.MEMORY)
-                },
             )
         },
     ) {

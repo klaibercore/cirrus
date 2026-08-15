@@ -55,8 +55,10 @@ app/src/main/java/dev/klaiber/cirrus/
 │   ├── ConversationTitler.kt # when a thread is named, from what, and what to do on failure
 │   ├── ErrorMessages.kt    # the one place a failure becomes a sentence (Throwable.userMessage)
 │   ├── model/              # Conversation, ChatMessage, GenerationParams, ModelInfo, ...
+│   ├── SuggestionGenerator.kt # openers and agent ideas, written by the user's own model
 │   └── tools/              # CirrusTool interface, ToolRegistry, web tools, McpTool/McpToolSet
-│       └── github/         # 11 GitHub tools + shared schema/argument plumbing
+│       ├── github/         # 11 GitHub tools + shared schema/argument plumbing
+│       └── shell/          # CommandPolicy, ShellWorkspace/Runner, the clock, calendar, apps
 ├── data/
 │   ├── remote/             # OllamaClient (OkHttp + NDJSON), DTOs, ApiCredentials, exceptions
 │   │   ├── github/         # GitHubClient (REST v3), DTOs, GitHubCredentials
@@ -95,6 +97,23 @@ app/src/main/java/dev/klaiber/cirrus/
   reachable. Sending a schema for a tool that cannot run wastes context and invites the model to
   call it and fail. `find` resolves built-ins before MCP tools, so a remote server cannot take
   over `web_search` by naming a tool after it.
+- **`CommandPolicy`** — decides whether a shell command may run, *before* it runs. An allow list of
+  program names, not a deny list: a deny list is a list of the dangerous programs somebody thought
+  of, and Android ships a multi-call binary with a hundred applets behind it. Three rules do the
+  work — only listed programs, no absolute paths (so the workspace is the whole reachable world),
+  and no `$(…)`/backticks/`..`/background jobs. Anything that runs another program on the command's
+  behalf (`sh`, `xargs`, `awk`, `env`, `find -exec`) is refused by name. Pure Kotlin; carries tests.
+- **`ShellRunner` / `ShellWorkspace`** — the process, and the one directory it may write to. A
+  watchdog coroutine kills the process at the deadline *and* in its `finally`, so a cancelled turn
+  takes the process with it; killing is what unblocks the read, since a blocking read on a pipe
+  ignores thread interruption. The environment is built rather than inherited, because Android's
+  `date` reports UTC unless `TZ` is set. The workspace is wiped at every process start, trimmed
+  when it grows, and the model is told to empty it before finishing.
+- **`SuggestionGenerator`** — asks the configured model for the four openers on an empty chat and
+  for agent ideas, telling it exactly which tools this install has so nothing is suggested that
+  would fail on the first tap. Generated once per process per capability signature. The static
+  `StarterPrompt`/`AgentTemplate` lists are the floor, not the plan: they show while a request is in
+  flight and stay if it fails.
 - **`GitHubClient`** — REST v3 transport. Has its own `OkHttpClient` (`@GitHubHttp`) because the
   Ollama client attaches the Ollama key to every request, and that key must never reach a third
   party. All mutating calls funnel through `requireWrites()`.
@@ -179,6 +198,11 @@ app/src/main/java/dev/klaiber/cirrus/
   input, because it re-parses on every streamed token. Inline spans are resolved at render time
   (`MarkdownInline`). Syntax highlighting is a hand-written lexer (`SyntaxHighlighter`), not
   regex passes, because regexes can't tell a `//` inside a string from a real comment.
+- **Emphasis is two axes, not one.** `**strong**` is `ExtraBold` *and* tracks tighter; `*emphasis*`
+  is a real italic (`FontSynthesis.All`) *and* tracks looser. Weight alone did not separate them
+  from the paragraph at reading size, and neither separated them from *each other* — a heavy run and
+  a slanted run are both merely "darker" in peripheral vision. `MarkdownInlineTest` asserts on the
+  tracking, because that is the part a tidy-up would delete as noise.
 - **Errors** map to typed exceptions (`OllamaException`, `GitHubException`, `McpException`) so
   the UI — or the model — can pick the right recovery.
 - **Cancellation** is respected end-to-end: stopping a generation cancels the collector, which
@@ -244,21 +268,36 @@ Three consequences worth keeping straight:
 - **The nightly memory pass skips them.** `ConversationDao.updatedSince` excludes agent threads, or
   a scheduled prompt gets harvested as a durable fact about the user every single night.
 
-### Memory, agents and the tools switch
+### Memory, agents, the shell, and the tools switch
 
-The conversation's tools switch governs **external** tools only — web search, GitHub, MCP. Memory
-and notifications are offered either way, because that switch exists to control latency, cost and
-what leaves the device, and neither of those spends any of it. Gating memory behind it meant
-cross-session memory silently not working in most conversations, which is indistinguishable from
-it being broken. `ToolRegistry.find` re-checks the same gate, so a model that names `web_search`
-with the switch off is told the tool is unknown rather than quietly reaching the network.
+The conversation's tools switch governs **external** tools only — web search, GitHub, MCP. Memory,
+notifications and the device tools (the shell, the clock, the calendar, `system_info`) are offered
+either way, because that switch exists to control latency, cost and what leaves the device, and none
+of those spends any of it. Gating memory behind it meant cross-session memory silently not working
+in most conversations, which is indistinguishable from it being broken; gating the clock behind it
+means a model answering "how long until Friday?" from the year it was trained in. `ToolRegistry.find`
+re-checks every gate, so a model that names `web_search` with the switch off is told the tool is
+unknown rather than quietly reaching the network.
+
+Two settings of their own sit beside it. `shellToolsEnabled` (default **on**) covers the device
+tools; `appControlEnabled` (default **off**) covers `list_installed_apps`, `open_app` and
+`install_app`, which are the only local tools that *act* rather than answer — opening an app covers
+whatever the user was reading. `install_app` cannot install: it opens a store listing, and Android's
+own installer asks.
+
+`ToolRegistry.standingBrief()` is the other half of that, and it goes into the system message next
+to the memory brief. A tool description is read when the model is deciding whether to call *that
+tool*; "clean up before you finish" is about the end of a session, which is exactly the moment
+nobody is reading a tool description. Two sentences, because this is paid for on every turn.
 
 ### Writing a tool
 
 Implement `CirrusTool`, register it in `ToolRegistry` (via `GitHubToolSet` for GitHub ones), and:
 
 - **Never throw.** The model is mid-turn; an exception ends the turn with a stack trace instead of
-  letting it recover. Wrap the body in `runTool { }` and return a JSON error object.
+  letting it recover. Wrap the body in the neighbouring set's helper — `GitHubTool`'s base class,
+  `memoryTool { }`, `shellTool { }` — and return a JSON error object. Each of those rethrows
+  `CancellationException`: swallowing it would turn "the user pressed stop" into a tool result.
 - **Truncate aggressively.** The JSON you return is fed straight back as context. Return the
   smallest useful shape and tell the model how to ask for more (`start_line`, `limit`).
 - **Anything that writes must be default-off** and must say so in its description, in capitals,
@@ -334,6 +373,15 @@ Unit tests live in `app/src/test/java/...` mirroring the main package. Run with
   client with no auth interceptor.
 - GitHub's `/issues` endpoint returns pull requests too. `ListIssuesTool` filters on
   `pull_request == null`; forgetting that double-counts every PR as an issue.
+- Since API 29 Android **refuses to execute a binary an app downloaded** into its own data
+  directory (W^X). There is therefore no way to install a command-line program *into* Cirrus, and
+  `run_command` is limited to what the system's toybox already provides — which varies by vendor,
+  hence the `shell.available`/`shell.missing` block in `system_info`. The honest answer for someone
+  who wants a package manager is a terminal app with its own userland, which `install_app` can offer
+  and nothing here can be.
+- **Android blocks activity starts from the background**, so `open_app` and `install_app` check
+  `IMPORTANCE_FOREGROUND` first and return an explanation rather than reporting success for a screen
+  that never appeared. A scheduled agent calling either at 3am gets the refusal, which is correct.
 - `Modifier.size(n.dp)` on an `IconButton` shrinks its **hit rectangle**, not just its bounds, so
   anything under 48dp quietly breaks the touch-target minimum. Use
   `Modifier.minimumInteractiveComponentSize()` and size the `Icon` inside it instead.

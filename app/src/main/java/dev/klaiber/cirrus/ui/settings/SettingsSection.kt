@@ -41,7 +41,7 @@ enum class SettingsSection(
     ),
     TOOLS(
         title = "Tools",
-        summary = "Web search, notifications, limits",
+        summary = "The shell, apps, web search, limits",
         icon = Icons.Outlined.Bolt,
     ),
     INTEGRATIONS(

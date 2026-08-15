@@ -24,6 +24,8 @@ data class ChatUiState(
     val search: ChatSearch = ChatSearch(),
     /** Set while this thread is still an agent's run, so the transcript can say whose it is. */
     val agentName: String? = null,
+    /** Openers written by the user's own model. Empty until one has answered. */
+    val generatedPrompts: List<StarterPrompt> = emptyList(),
 ) {
     /**
      * True for a thread an agent wrote and nobody has replied to yet.
@@ -33,12 +35,18 @@ data class ChatUiState(
      */
     val isAgentRun: Boolean get() = conversation?.isAgentRun == true
 
-    /** Openers for a blank conversation, matched to what is actually switched on. */
+    /**
+     * Openers for a blank conversation, matched to what is actually switched on.
+     *
+     * The written-in-advance set is the floor rather than the plan: it is what the screen shows
+     * while the model is being asked for something better, and what it keeps showing if the request
+     * fails or there is no model configured yet. An empty chat is never blank.
+     */
     val starterPrompts: List<StarterPrompt>
-        get() = if (settings.showStarterPrompts) {
-            StarterPrompt.forSettings(settings, toolsEnabled)
-        } else {
-            emptyList()
+        get() = when {
+            !settings.showStarterPrompts -> emptyList()
+            generatedPrompts.isNotEmpty() -> generatedPrompts
+            else -> StarterPrompt.forSettings(settings, toolsEnabled)
         }
 
     val title: String get() = conversation?.title ?: Conversation.DEFAULT_TITLE

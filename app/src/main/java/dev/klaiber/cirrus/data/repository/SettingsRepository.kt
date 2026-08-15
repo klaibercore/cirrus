@@ -188,6 +188,10 @@ class SettingsRepository @Inject constructor(
         it[Keys.ELEVENLABS_MODEL] = model.id
     }
 
+    suspend fun setShellToolsEnabled(enabled: Boolean) = edit { it[Keys.SHELL_TOOLS] = enabled }
+
+    suspend fun setAppControlEnabled(enabled: Boolean) = edit { it[Keys.APP_CONTROL] = enabled }
+
     suspend fun setMemoryEnabled(enabled: Boolean) = edit { it[Keys.MEMORY_ENABLED] = enabled }
 
     suspend fun setNotificationToolEnabled(enabled: Boolean) = edit {
@@ -248,6 +252,8 @@ class SettingsRepository @Inject constructor(
         elevenLabsVoiceId = this[Keys.ELEVENLABS_VOICE] ?: "",
         elevenLabsVoiceName = this[Keys.ELEVENLABS_VOICE_NAME] ?: "",
         elevenLabsModelId = this[Keys.ELEVENLABS_MODEL] ?: ElevenLabsModel.Default.id,
+        shellToolsEnabled = this[Keys.SHELL_TOOLS] ?: true,
+        appControlEnabled = this[Keys.APP_CONTROL] ?: false,
         memoryEnabled = this[Keys.MEMORY_ENABLED] ?: true,
         notificationToolEnabled = this[Keys.NOTIFICATION_TOOL] ?: true,
         memoryConsolidationEnabled = this[Keys.CONSOLIDATION_ENABLED] ?: true,
@@ -286,6 +292,8 @@ class SettingsRepository @Inject constructor(
         val ELEVENLABS_VOICE = stringPreferencesKey("elevenlabs_voice")
         val ELEVENLABS_VOICE_NAME = stringPreferencesKey("elevenlabs_voice_name")
         val ELEVENLABS_MODEL = stringPreferencesKey("elevenlabs_model")
+        val SHELL_TOOLS = booleanPreferencesKey("shell_tools")
+        val APP_CONTROL = booleanPreferencesKey("app_control")
         val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
         val NOTIFICATION_TOOL = booleanPreferencesKey("notification_tool")
         val CONSOLIDATION_ENABLED = booleanPreferencesKey("consolidation_enabled")

@@ -194,6 +194,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setShowStarterPrompts(enabled) }
     }
 
+    fun setShellToolsEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setShellToolsEnabled(enabled) }
+    }
+
+    fun setAppControlEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setAppControlEnabled(enabled) }
+    }
+
     fun saveGitHubToken(token: String) {
         viewModelScope.launch { settingsRepository.setGitHubToken(token) }
     }

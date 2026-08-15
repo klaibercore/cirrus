@@ -25,6 +25,22 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <!-- Apps with a launcher icon, for list_installed_apps and open_app. This is the narrow
+             form on purpose: QUERY_ALL_PACKAGES would also reveal every app without an icon,
+             which is a far more revealing list than "what can I open for you?" needs. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- The store listing install_app opens, and a browser to fall back on. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="market" />
+        </intent>
     </queries>
 
     <application

@@ -171,6 +171,7 @@ class ToolRegistry @Inject constructor(
     private val gitHubTools: GitHubToolSet,
     private val memoryTools: MemoryToolSet,
     private val notificationTool: SendNotificationTool,
+    private val shellTools: ShellToolSet,
     private val mcpTools: McpToolSet,
     private val settingsRepository: SettingsRepository,
     private val gitHubCredentials: GitHubCredentials,
@@ -179,7 +180,8 @@ class ToolRegistry @Inject constructor(
 
     /** Tools that exist for the life of the process; MCP tools come and go, so are resolved live. */
     private val staticTools: Map<String, CirrusTool> =
-        (webTools + gitHubTools.all + memoryTools.all + notificationTool).associateBy { it.name }
+        (webTools + gitHubTools.all + memoryTools.all + shellTools.all + notificationTool)
+            .associateBy { it.name }
 
     /**
      * What to offer the model this turn.
@@ -201,6 +203,16 @@ class ToolRegistry @Inject constructor(
         }
         if (settings.notificationToolEnabled) {
             add(notificationTool.definition)
+        }
+        // The shell, the clock and the calendar are on the same footing as memory: local, instant,
+        // and nothing leaves the phone. A model that cannot ask what today's date is answers every
+        // scheduling question from the year it was trained in, which is wrong in the way that looks
+        // most convincing.
+        if (settings.shellToolsEnabled) {
+            addAll(shellTools.device.map { it.definition })
+        }
+        if (settings.appControlEnabled) {
+            addAll(shellTools.apps.map { it.definition })
         }
 
         if (!externalTools) return@buildList
@@ -238,6 +250,10 @@ class ToolRegistry @Inject constructor(
         if (name == notificationTool.name) {
             return notificationTool.takeIf { settings.notificationToolEnabled }
         }
+        shellTools.device.firstOrNull { it.name == name }
+            ?.let { return it.takeIf { settings.shellToolsEnabled } }
+        shellTools.apps.firstOrNull { it.name == name }
+            ?.let { return it.takeIf { settings.appControlEnabled } }
 
         if (!externalTools) return null
 
@@ -256,9 +272,49 @@ class ToolRegistry @Inject constructor(
         return staticTools[name] ?: mcpTools.find(name)
     }
 
+    /**
+     * The standing rules that belong in the system prompt rather than in a tool description.
+     *
+     * A tool's description is read when the model is deciding whether to call *that tool*. Two of
+     * the shell's rules have to survive longer than one decision — stay non-destructive, and clean
+     * up before you finish — because the second one is about the end of a session, which is exactly
+     * the moment nobody is looking at a tool description. Both are one sentence each: this is paid
+     * for on every turn, and a paragraph of etiquette would cost more context than the tool saves.
+     *
+     * Null when nothing needs saying, so an install with the shell switched off sends nothing.
+     */
+    fun standingBrief(): String? {
+        val settings = settingsRepository.current.value
+        // The emptiness check is not belt-and-braces: it is what stops the brief describing a shell
+        // to a build that has none.
+        if (!settings.shellToolsEnabled || shellTools.device.isEmpty()) return null
+        return "You can run shell commands on this phone with run_command. It works inside a " +
+            "private scratch workspace and can reach nothing outside it. Two rules hold for the " +
+            "whole conversation: be non-destructive — read before you write, and never remove a " +
+            "file you did not create — and clean up after yourself by calling clean_workspace " +
+            "before you finish, whenever you have written anything. Use get_datetime rather than " +
+            "assuming today's date."
+    }
+
     private val gitHubEnabled: Boolean
         get() = settingsRepository.current.value.gitHubToolsEnabled &&
             gitHubCredentials.isConfigured
+}
+
+/**
+ * The local tool set, split by what it is allowed to do.
+ *
+ * Two lists rather than one, because they answer to two different switches and the difference is
+ * real: [device] answers questions and touches nothing outside a scratch directory, while [apps]
+ * acts on the phone — it puts another app in front of whatever the user was reading. Assembled in
+ * `AppModule` rather than injected as a set, in the same spirit as [GitHubToolSet]: an explicit
+ * list is far easier to audit when the question is "which of these can do something?"
+ */
+class ShellToolSet(
+    val device: List<CirrusTool>,
+    val apps: List<CirrusTool>,
+) {
+    val all: List<CirrusTool> = device + apps
 }
 
 /**

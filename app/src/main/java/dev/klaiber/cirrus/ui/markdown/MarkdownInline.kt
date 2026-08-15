@@ -10,10 +10,12 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontSynthesis
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.sp
 import dev.klaiber.cirrus.ui.markdown.math.MathTypesetter
 import dev.klaiber.cirrus.ui.markdown.math.inlineMath
 
@@ -153,12 +155,7 @@ private fun AnnotatedString.Builder.appendInline(
                 index++
             } else {
                 flush()
-                val span = if (isStrong) {
-                    SpanStyle(fontWeight = FontWeight.Bold)
-                } else {
-                    SpanStyle(fontStyle = FontStyle.Italic)
-                }
-                withStyle(span) {
+                withStyle(if (isStrong) StrongStyle else EmphasisStyle) {
                     appendInline(text.substring(contentStart, closeIndex), styles, contents)
                 }
                 index = closeIndex + delimiter.length
@@ -370,6 +367,41 @@ private fun String.indexOfDelimiter(from: Int, delimiter: String): Int {
     }
     return -1
 }
+
+/**
+ * `**strong**`: heavier than bold, and tighter with it.
+ *
+ * Weight alone was not carrying the distinction. The reading face is the platform's own, which is
+ * a variable Roboto on any recent Android, and 400 against 700 at 16sp on a bright panel is a
+ * difference you have to go looking for — which defeats the purpose of a word being marked at all.
+ * ExtraBold is a full step further on, and on a device whose family stops at 700 the request
+ * resolves back to bold rather than to anything worse.
+ *
+ * The negative tracking is the other half, and it does more work than the weight does. Heavier
+ * letterforms carry more ink and need *less* air between them, so a bold run set at the body's
+ * tracking looks not just heavier but wider — and it is the change in colour and rhythm, rather
+ * than the stroke weight in isolation, that the eye actually catches while reading.
+ */
+private val StrongStyle = SpanStyle(
+    fontWeight = FontWeight.ExtraBold,
+    letterSpacing = (-0.2).sp,
+)
+
+/**
+ * `*emphasis*`: a real italic, opened up.
+ *
+ * Set against [StrongStyle] on purpose. Bold gets tighter, italic gets looser, so the two are
+ * distinguishable from each other at a glance and not only from the text around them — which is
+ * exactly the case that used to fail, since a slanted run and a heavy run are both just "darker" in
+ * peripheral vision. [FontSynthesis.All] is stated rather than left to the default so a family with
+ * no true italic still slants; a font family that silently ignores the request would otherwise
+ * render emphasis as plain text.
+ */
+private val EmphasisStyle = SpanStyle(
+    fontStyle = FontStyle.Italic,
+    fontSynthesis = FontSynthesis.All,
+    letterSpacing = 0.2.sp,
+)
 
 private val TRAILING_PUNCTUATION = setOf('.', ',', ';', ':', '!', '?', ')', ']', '}', '"', '\'')
 
