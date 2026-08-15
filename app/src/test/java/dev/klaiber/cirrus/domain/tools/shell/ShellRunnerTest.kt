@@ -73,13 +73,22 @@ class ShellRunnerTest {
     /**
      * The reason a watchdog exists at all: a blocking read on a pipe does not answer to thread
      * interruption, so the only way out is to kill the process and let the stream close.
+     *
+     * The margins are deliberately wide. The property under test is "a command that would run for
+     * thirty seconds does not", and the gap between the two-second deadline and the thirty-second
+     * command is the room a loaded CI runner needs to schedule the watchdog. An earlier version cut
+     * that to 700ms, which passed on a quiet laptop and failed on a shared runner — a test that
+     * measures the scheduler rather than the code is worse than no test, because it teaches you to
+     * re-run the build.
      */
     @Test
     fun `a command that will not stop is killed at the deadline`() = runBlocking {
-        val result = runner.run("sleep 30", timeoutMs = 700)
+        val started = System.currentTimeMillis()
+        val result = runner.run("sleep 30", timeoutMs = 2_000)
+        val elapsed = System.currentTimeMillis() - started
 
-        assertTrue("should have been killed", result.timedOut)
-        assertTrue("should not have waited for the sleep", result.durationMs < 10_000)
+        assertTrue("should not have waited out the sleep, took ${elapsed}ms", elapsed < 15_000)
+        assertTrue("should be reported as a timeout, not as a clean exit", result.timedOut)
     }
 
     @Test
