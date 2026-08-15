@@ -324,6 +324,9 @@ fun SettingsSectionScreen(
     section: SettingsSection,
     onBack: () -> Unit,
     onOpenMcpServers: () -> Unit,
+    /** Asks Android for the location permission, then reports what it said. */
+    onLocationToggle: (Boolean) -> Unit = {},
+    onSpotifyConnect: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -460,16 +463,13 @@ fun SettingsSectionScreen(
                     onCheckedChange = viewModel::setGitHubToolsEnabled,
                     enabled = state.settings.hasGitHubToken,
                 )
-                SwitchRow(
-                    title = "Allow write actions",
-                    subtitle = "Opening issues, commenting, posting reviews, committing files",
-                    help = "Off by default, and worth leaving off. Reading is recoverable; opening " +
-                        "an issue or approving a pull request is public and decided by a model " +
-                        "rather than by you. With this off, the write tools are not even offered, " +
-                        "so the model cannot try.",
-                    checked = state.settings.gitHubWritesAllowed,
-                    onCheckedChange = viewModel::setGitHubWritesAllowed,
-                    enabled = state.settings.hasGitHubToken && state.settings.gitHubToolsEnabled,
+                Text(
+                    text = "Write actions — opening issues, commenting, committing — are governed " +
+                        "by one switch for every integration, at Settings → Tools → Allow write " +
+                        "actions.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
                 )
 
             
@@ -484,6 +484,17 @@ fun SettingsSectionScreen(
                 )
 
             
+                }
+
+                SettingsSection.MUSIC -> {
+
+                SpotifyPanel(
+                    settings = state.settings,
+                    onClientId = viewModel::setSpotifyClientId,
+                    onEnabled = viewModel::setSpotifyEnabled,
+                    onConnect = onSpotifyConnect,
+                    onDisconnect = viewModel::disconnectSpotify,
+                )
                 }
 
                 SettingsSection.VOICE -> {
@@ -608,14 +619,59 @@ fun SettingsSectionScreen(
                     onCheckedChange = viewModel::setShellToolsEnabled,
                 )
                 SwitchRow(
-                    title = "Apps",
-                    subtitle = "List what is installed, open an app, offer to install one",
-                    help = "Off by default, because this is the one local tool that acts rather " +
-                        "than answers — opening an app puts it in front of whatever you were " +
-                        "reading. It cannot install anything by itself: the most it can do is " +
-                        "open a store page, where Android asks you, as it always does.",
+                    title = "Apps and media",
+                    subtitle = "List what is installed, open an app, control what is playing",
+                    help = "Off by default, because these are the local tools that act rather " +
+                        "than answer — opening an app puts it in front of whatever you were " +
+                        "reading, and the media controls make noise. Installing is not something " +
+                        "it can do by itself: the most it manages is opening a store page, where " +
+                        "Android asks you, as it always does. The media controls use Android's " +
+                        "own play/pause buttons, so they work with any player and need no Spotify " +
+                        "Premium.",
                     checked = state.settings.appControlEnabled,
                     onCheckedChange = viewModel::setAppControlEnabled,
+                )
+                SwitchRow(
+                    title = "Location",
+                    subtitle = "Roughly where you are, for weather and anything local",
+                    help = "Off by default. Turning it on asks Android for permission, and Cirrus " +
+                        "asks only for the coarse kind — roughly your neighbourhood, never your " +
+                        "doorstep — because that answers every question this is for. It is read " +
+                        "only when the model calls for it, never in the background, and never by " +
+                        "a scheduled agent while you are asleep.",
+                    checked = state.settings.locationEnabled,
+                    onCheckedChange = onLocationToggle,
+                )
+                SwitchRow(
+                    title = "Memory",
+                    subtitle = "Remember things about you between conversations",
+                    help = "Lets the model save durable facts — how you like to work, what you " +
+                        "are building, who people are — and look them up later. Everything it " +
+                        "keeps is on the Memory screen, where you can read, edit or retire any " +
+                        "of it. Nothing leaves the phone.",
+                    checked = state.settings.memoryEnabled,
+                    onCheckedChange = viewModel::setMemoryEnabled,
+                )
+                SwitchRow(
+                    title = "Notifications",
+                    subtitle = "Let a reply reach you when you are not looking at Cirrus",
+                    help = "Mostly for scheduled agents: an answer written at 3am is worthless if " +
+                        "nobody knows it exists. In an ordinary chat the model is told not to " +
+                        "notify you about something you are already reading.",
+                    checked = state.settings.notificationToolEnabled,
+                    onCheckedChange = viewModel::setNotificationToolEnabled,
+                )
+                SwitchRow(
+                    title = "Allow write actions",
+                    subtitle = "One switch for anything that changes something outside Cirrus",
+                    help = "Off by default, and worth leaving off. It governs every integration " +
+                        "at once: opening a GitHub issue, committing a file, editing a Spotify " +
+                        "playlist, and any MCP tool that has not declared itself read-only. " +
+                        "Reading is recoverable and writing is not, and a tool call is decided by " +
+                        "a model rather than by you. With this off those tools are not offered at " +
+                        "all, so nothing can try and fail — everything read-only still works.",
+                    checked = state.settings.writeToolsAllowed,
+                    onCheckedChange = viewModel::setWriteToolsAllowed,
                 )
                 StepperRow(
                     title = "Search results",
@@ -1370,6 +1426,116 @@ private fun StepperRow(
         }
     }
 }
+
+/**
+ * Connecting Spotify, which is three things in an order that matters.
+ *
+ * A client ID, then a sign-in, then the switch — and the switch is deliberately last and disabled
+ * until the other two are done. The alternative, a switch that can be turned on before there is an
+ * account behind it, produces the worst possible state: settings that say the feature is on, and a
+ * model that fails every time it tries to use it.
+ *
+ * The redirect URI is shown rather than merely documented because it is the one value that has to
+ * match on both ends, it is invisible from Spotify's side, and getting it wrong produces an error
+ * on Spotify's own page that never mentions Cirrus at all.
+ */
+@Composable
+private fun SpotifyPanel(
+    settings: dev.klaiber.cirrus.domain.model.AppSettings,
+    onClientId: (String) -> Unit,
+    onEnabled: (Boolean) -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    var draft by remember(settings.spotifyClientId) { mutableStateOf(settings.spotifyClientId) }
+    val clipboard = dev.klaiber.cirrus.ui.util.rememberClipboard()
+
+    Column {
+        LabelWithHelp(
+            label = "Client ID",
+            help = "Spotify does not hand out a shared key for apps like this one, so Cirrus uses " +
+                "yours. Create an app at developer.spotify.com/dashboard — it takes a minute and " +
+                "costs nothing — add the redirect URI below to it, and paste the client ID here. " +
+                "There is no client secret: the sign-in uses PKCE, which is designed for apps " +
+                "that cannot keep one.",
+        )
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            label = { Text("Spotify client ID") },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+            shape = ContainerShape,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (draft.trim() != settings.spotifyClientId) {
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = { onClientId(draft) }, enabled = draft.isNotBlank()) {
+                Text("Save client ID")
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        OutlinedPanel(shape = ContainerShape, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                Text("Redirect URI", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = SPOTIFY_REDIRECT_URI,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Add this to your Spotify app, exactly as written.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = { clipboard.copy(SPOTIFY_REDIRECT_URI) }) { Text("Copy") }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (settings.hasSpotifyAccount) {
+                TextButton(onClick = onDisconnect) { Text("Disconnect") }
+            } else {
+                Button(onClick = onConnect, enabled = settings.spotifyClientId.isNotBlank()) {
+                    Text("Connect Spotify")
+                }
+            }
+        }
+        Text(
+            text = when {
+                settings.spotifyClientId.isBlank() -> "Add a client ID first."
+                !settings.hasSpotifyAccount -> "Opens Spotify in your browser to sign in."
+                settings.spotifyPremium -> "Connected as ${settings.spotifyAccountName} · Premium."
+                else -> "Connected as ${settings.spotifyAccountName}. This account is not Premium, " +
+                    "so Spotify will refuse playback control — the media controls under Tools → " +
+                    "Apps and media still work, on any account."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+
+        Spacer(Modifier.height(8.dp))
+        SwitchRow(
+            title = "Spotify tools",
+            subtitle = "Search, playlists, what is playing, and playback control",
+            help = "Offers the model five Spotify tools: searching the catalogue, reading your " +
+                "playlists and saved music, seeing what is playing, controlling playback, and " +
+                "editing playlists. Editing needs the write switch under Tools as well. These go " +
+                "to api.spotify.com and nowhere else, and no other key of yours is ever sent " +
+                "there.",
+            checked = settings.spotifyEnabled,
+            onCheckedChange = onEnabled,
+            enabled = settings.hasSpotifyAccount,
+        )
+    }
+}
+
+private const val SPOTIFY_REDIRECT_URI = "cirrus://spotify/callback"
 
 /** Matches Material's disabled content opacity without pulling in the full token set. */
 private const val DISABLED_ALPHA = 0.38f

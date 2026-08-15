@@ -10,7 +10,15 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import dev.klaiber.cirrus.domain.tools.ShellToolSet
+import dev.klaiber.cirrus.domain.tools.DeviceToolSet
+import dev.klaiber.cirrus.domain.tools.SpotifyToolSet
+import dev.klaiber.cirrus.domain.tools.device.LocationTool
+import dev.klaiber.cirrus.domain.tools.device.MediaControlTool
+import dev.klaiber.cirrus.domain.tools.spotify.SpotifyLibraryTool
+import dev.klaiber.cirrus.domain.tools.spotify.SpotifyNowPlayingTool
+import dev.klaiber.cirrus.domain.tools.spotify.SpotifyPlaybackTool
+import dev.klaiber.cirrus.domain.tools.spotify.SpotifyPlaylistEditTool
+import dev.klaiber.cirrus.domain.tools.spotify.SpotifySearchTool
 import dev.klaiber.cirrus.domain.tools.shell.CalendarTool
 import dev.klaiber.cirrus.domain.tools.shell.CleanWorkspaceTool
 import dev.klaiber.cirrus.domain.tools.shell.DateTimeTool
@@ -68,7 +76,7 @@ object AppModule {
     /** Assembled by hand so that "which of these can act on the phone?" has one obvious answer. */
     @Provides
     @Singleton
-    fun provideShellToolSet(
+    fun provideDeviceToolSet(
         runCommand: RunCommandTool,
         cleanWorkspace: CleanWorkspaceTool,
         dateTime: DateTimeTool,
@@ -77,9 +85,27 @@ object AppModule {
         listApps: ListAppsTool,
         openApp: OpenAppTool,
         installApp: InstallAppTool,
-    ): ShellToolSet = ShellToolSet(
-        device = listOf(dateTime, calendar, systemInfo, runCommand, cleanWorkspace),
-        apps = listOf(listApps, openApp, installApp),
+        mediaControl: MediaControlTool,
+        location: LocationTool,
+    ): DeviceToolSet = DeviceToolSet(
+        shell = listOf(dateTime, calendar, systemInfo, runCommand, cleanWorkspace),
+        // Media control sits with the apps rather than with Spotify: it drives whatever is playing,
+        // which is as likely to be a podcast app, and it is the one path that works without an
+        // account of any kind.
+        apps = listOf(listApps, openApp, installApp, mediaControl),
+        location = listOf(location),
+    )
+
+    @Provides
+    @Singleton
+    fun provideSpotifyToolSet(
+        search: SpotifySearchTool,
+        nowPlaying: SpotifyNowPlayingTool,
+        library: SpotifyLibraryTool,
+        playback: SpotifyPlaybackTool,
+        playlistEdit: SpotifyPlaylistEditTool,
+    ): SpotifyToolSet = SpotifyToolSet(
+        all = listOf(search, nowPlaying, library, playback, playlistEdit),
     )
 
     @Provides

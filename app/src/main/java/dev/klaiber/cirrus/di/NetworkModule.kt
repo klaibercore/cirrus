@@ -4,6 +4,7 @@ import dev.klaiber.cirrus.BuildConfig
 import dev.klaiber.cirrus.data.remote.ApiCredentials
 import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -80,6 +81,47 @@ object NetworkModule {
                 }
             }
             // Unlike a generation, every GitHub call is a bounded request/response.
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(60, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+
+    /**
+     * A client for Spotify, for both the API and the accounts host.
+     *
+     * One client rather than two, with the interceptor deciding: the bearer token is attached only
+     * to api.spotify.com. accounts.spotify.com must not receive it — the token endpoint
+     * authenticates the PKCE verifier in the body, and an `Authorization` header there is at best
+     * ignored and at worst the reason a refresh fails while it is trying to fix an expired token.
+     */
+    @Provides
+    @Singleton
+    @SpotifyHttp
+    fun provideSpotifyOkHttpClient(credentials: SpotifyCredentials): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val builder = request.newBuilder()
+                    .header("User-Agent", "Cirrus/${BuildConfig.VERSION_NAME} (Android)")
+                if (request.url.host.startsWith("api.")) {
+                    credentials.accessToken?.let { token ->
+                        builder.header("Authorization", "Bearer $token")
+                    }
+                }
+                chain.proceed(builder.build())
+            }
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    addInterceptor(
+                        HttpLoggingInterceptor().apply {
+                            level = HttpLoggingInterceptor.Level.BASIC
+                            redactHeader("Authorization")
+                        },
+                    )
+                }
+            }
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

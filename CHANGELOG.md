@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Spotify.** Search the catalogue, read your playlists, saved music and the artists you actually
+  listen to, see what is playing, control playback, and make or edit playlists — five tools rather
+  than the fifteen endpoints behind them, because eight near-identical schemas on every turn is a
+  page of context for nothing. Sign-in is OAuth with PKCE, so there is no client secret in the app;
+  it uses a client ID you create at developer.spotify.com, and the redirect URI to paste back is
+  shown in Settings → Music with a copy button.
+- **Media controls that work without Premium.** Spotify's API refuses playback control on free
+  accounts, which left "pause the music" — the most obvious thing anyone would ask a phone
+  assistant — failing for a lot of people. `media_control` drives Android's own media buttons
+  instead: no account, no subscription, no network, and it works for any player, not just Spotify.
+  When Spotify refuses a playback command, the error now points at it.
+- **Where you are.** `get_location` answers the questions that depend on it — the weather, what is
+  nearby, how far to somewhere. Coarse accuracy only, by design rather than as a fallback: every use
+  it has is answered by the neighbourhood, and the difference between that and the doorstep is the
+  difference between a useful tool and a tracking device. Off by default, foreground only, never
+  from a scheduled agent.
+- **A settings catalogue the model can read.** A model asked for a tool that was switched off used
+  to be told "unknown tool" — and, unable to tell "this app cannot do that" from "not until somebody
+  flips a switch", it guessed the first one and told you your app lacked a feature it shipped with.
+  Refusals now name the exact switch and where it lives, and `describe_settings` lets the model
+  check before promising anything.
+- **Spotify in the MCP catalogue**, alongside GitHub, Sentry, Linear and the rest.
+
 - **A shell, for the everyday mechanical jobs.** Cirrus can now run commands on the phone: counting
   and sorting text, checksums and encodings, working with the scratch files it wrote a moment ago.
   What it may run is decided before anything runs, from a list you can read in one sitting — only
@@ -35,6 +58,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **One switch for write actions, covering everything.** "Allow write actions" used to be a GitHub
+  setting. It now governs anything that changes something outside Cirrus and cannot be undone from
+  inside it — GitHub, Spotify playlists, and MCP tools. A gate per integration meant the third
+  integration shipped without one, which is exactly what had happened. If you had allowed GitHub
+  writes, that carries over; you will not be asked again.
+- **MCP tools are assumed to write unless they say otherwise.** The protocol has optional
+  annotations for this and most servers omit them, so Cirrus now treats an unannotated tool as one
+  that changes things. Every other tool in the app can be understood by reading its source; an MCP
+  tool is a function on somebody else's server, described by that server. **This will withhold tools
+  from servers you already have attached** until you allow write actions — which is the point, since
+  until now nothing asked at all.
+- **Playback control is not a write.** Pausing is undone by playing, so it stays available with the
+  write switch off. The test is reversibility, not severity.
+- **Memory, notifications and the nightly tidy-up have switches at last.** All three were settings
+  with no interface anywhere — you could not turn memory off. They are in Settings → Tools.
 - **The empty chat says hello.** A cloud and "Good afternoon", side by side, in place of a large
   mark above a question the four rows underneath were already answering.
 - **Bold and italic are told apart.** At reading size on a bright screen, 400 against 700 was a

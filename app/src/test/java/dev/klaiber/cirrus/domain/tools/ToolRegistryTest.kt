@@ -8,6 +8,7 @@ import dev.klaiber.cirrus.data.prefs.SecretCipher
 import dev.klaiber.cirrus.data.remote.ApiCredentials
 import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsCredentials
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.repository.McpServerRepository
@@ -65,6 +66,7 @@ class ToolRegistryTest {
     private val json = Json { ignoreUnknownKeys = true }
     private lateinit var settings: SettingsRepository
     private lateinit var gitHubCredentials: GitHubCredentials
+    private lateinit var spotifyCredentials: SpotifyCredentials
     private lateinit var registry: ToolRegistry
 
     @Before
@@ -77,12 +79,14 @@ class ToolRegistryTest {
             )
         }
         gitHubCredentials = GitHubCredentials()
+        spotifyCredentials = SpotifyCredentials()
         settings = SettingsRepository(
             dataStore = dataStore,
             secretCipher = SecretCipher(),
             credentials = ApiCredentials(),
             gitHubCredentials = gitHubCredentials,
             elevenLabsCredentials = ElevenLabsCredentials(),
+            spotifyCredentials = spotifyCredentials,
             json = json,
             scope = scope,
         )
@@ -129,12 +133,18 @@ class ToolRegistryTest {
             // Stand-ins: the real device tools need a Context, and what is under test here is the
             // gate rather than what is behind it. Two entries, because the two lists answer to two
             // different switches and both halves of each gate have to be exercised.
-            shellTools = ShellToolSet(
-                device = listOf(StubTool("run_command")),
+            deviceTools = DeviceToolSet(
+                shell = listOf(StubTool("run_command")),
                 apps = listOf(StubTool("open_app")),
+                location = listOf(StubTool("get_location")),
             ),
+            spotifyTools = SpotifyToolSet(
+                all = listOf(StubTool("spotify_search"), StubTool("spotify_edit", writes = true)),
+            ),
+            settingsTool = DescribeSettingsTool(settings),
             settingsRepository = settings,
             gitHubCredentials = gitHubCredentials,
+            spotifyCredentials = spotifyCredentials,
         )
     }
 
@@ -336,7 +346,7 @@ class ToolRegistryTest {
         writesAllowed: Boolean,
     ) {
         settings.setGitHubToolsEnabled(toolsEnabled)
-        settings.setGitHubWritesAllowed(writesAllowed)
+        settings.setWriteToolsAllowed(writesAllowed)
         val derivedWrites = toolsEnabled && writesAllowed
         await("gitHubToolsEnabled=$toolsEnabled") {
             settings.current.value.gitHubToolsEnabled == toolsEnabled
@@ -363,7 +373,10 @@ class ToolRegistryTest {
 }
 
 /** A name and a schema, which is all the registry's gates ever look at. */
-private class StubTool(override val name: String) : CirrusTool {
+private class StubTool(
+    override val name: String,
+    override val writes: Boolean = false,
+) : CirrusTool {
     override val definition: JsonElement = buildJsonObject {
         put("type", "function")
         putJsonObject("function") {

@@ -56,12 +56,17 @@ app/src/main/java/dev/klaiber/cirrus/
 │   ├── ErrorMessages.kt    # the one place a failure becomes a sentence (Throwable.userMessage)
 │   ├── model/              # Conversation, ChatMessage, GenerationParams, ModelInfo, ...
 │   ├── SuggestionGenerator.kt # openers and agent ideas, written by the user's own model
+│   ├── settings/           # SettingsCatalog — every capability switch, and where to find it
+│   ├── spotify/            # SpotifySession — token refresh, sign-in, and where they persist
 │   └── tools/              # CirrusTool interface, ToolRegistry, web tools, McpTool/McpToolSet
 │       ├── github/         # 11 GitHub tools + shared schema/argument plumbing
+│       ├── spotify/        # 5 tools: search, now playing, library, playback, playlist edit
+│       ├── device/         # LocationTool, MediaControlTool
 │       └── shell/          # CommandPolicy, ShellWorkspace/Runner, the clock, calendar, apps
 ├── data/
 │   ├── remote/             # OllamaClient (OkHttp + NDJSON), DTOs, ApiCredentials, exceptions
 │   │   ├── github/         # GitHubClient (REST v3), DTOs, GitHubCredentials
+│   │   ├── spotify/        # SpotifyClient + SpotifyAuth (PKCE), DTOs, SpotifyCredentials
 │   │   └── elevenlabs/     # ElevenLabsClient (text-to-speech), ElevenLabsCredentials
 │   ├── mcp/                # McpClient + transports, McpCatalog (known servers)
 │   ├── local/              # Room database, DAOs, entities, mappers
@@ -114,6 +119,17 @@ app/src/main/java/dev/klaiber/cirrus/
   would fail on the first tap. Generated once per process per capability signature. The static
   `StarterPrompt`/`AgentTemplate` lists are the floor, not the plan: they show while a request is in
   flight and stay if it fails.
+- **`SpotifySession`** — the answer to "is there a usable token right now?". Separate from
+  `SpotifyClient` because refreshing is not transport: it persists, it must happen exactly once when
+  four tools find an expired token together (hence the `Mutex`), and it distinguishes a token that
+  aged out (refresh) from one that was revoked (sign in again). Auth is **PKCE**, so there is no
+  client secret anywhere — an app the user can unzip cannot keep one. The client ID is the user's
+  own, from developer.spotify.com; Cirrus ships none.
+- **`SettingSwitch`** — the catalogue. Every capability switch with its title, the path to it, what
+  it unlocks, and how to read its state. `ToolRegistry` turns a refusal into a sentence naming the
+  switch, and `describe_settings` hands the whole list over. The paths are load-bearing and
+  `SettingsCatalogTest` asserts each one names a section that exists — a path that has drifted is
+  worse than none, because it sends someone looking for a row that is not there.
 - **`GitHubClient`** — REST v3 transport. Has its own `OkHttpClient` (`@GitHubHttp`) because the
   Ollama client attaches the Ollama key to every request, and that key must never reach a third
   party. All mutating calls funnel through `requireWrites()`.
@@ -279,11 +295,33 @@ means a model answering "how long until Friday?" from the year it was trained in
 re-checks every gate, so a model that names `web_search` with the switch off is told the tool is
 unknown rather than quietly reaching the network.
 
-Two settings of their own sit beside it. `shellToolsEnabled` (default **on**) covers the device
-tools; `appControlEnabled` (default **off**) covers `list_installed_apps`, `open_app` and
-`install_app`, which are the only local tools that *act* rather than answer — opening an app covers
-whatever the user was reading. `install_app` cannot install: it opens a store listing, and Android's
-own installer asks.
+Settings of their own sit beside it. `shellToolsEnabled` (default **on**) covers the device tools;
+`appControlEnabled` (default **off**) covers `list_installed_apps`, `open_app`, `install_app` and
+`media_control`, which act rather than answer; `locationEnabled` (default **off**, and needing
+Android's permission on top) covers `get_location`; `spotifyEnabled` needs a client ID and a
+sign-in behind it. `install_app` cannot install: it opens a store listing, and Android's own
+installer asks.
+
+### One write gate, for everything
+
+`CirrusTool.writes` means: **the effect outlives the turn, happens outside Cirrus, and cannot be
+reversed by calling the same tool again.** Each clause matters. Pausing music changes something and
+is not a write — the next call unpauses it. Remembering a fact is not a write — it is Cirrus's own
+store, and the memory screen restores anything. Opening a GitHub issue is, because nothing unopens
+it and other people can already see it. Gating too eagerly is not free either: putting memory behind
+this switch would make cross-session memory silently stop working.
+
+`writeToolsAllowed` (default **off**) governs every one of them at once, and migrates from the old
+GitHub-only `github_writes` key so anyone who had already allowed writes keeps them. A gate per
+integration meant the third integration shipped without one — which is exactly what had happened to
+MCP.
+
+**MCP tools default to writing.** `McpTool.writes` is `descriptor.readOnly != true`, read from the
+spec's optional `annotations` (`readOnlyHint`, `destructiveHint`, with destructive winning a
+contradiction). Absent annotations — most servers, today — count as writing. Every other tool in
+this app can be understood by reading it; an MCP tool is an arbitrary function on somebody else's
+server described by a sentence that server wrote about itself, and "nobody said it was destructive"
+is not evidence. The cost is real: an unannotated server offers nothing until writes are allowed.
 
 `ToolRegistry.standingBrief()` is the other half of that, and it goes into the system message next
 to the memory brief. A tool description is read when the model is deciding whether to call *that
@@ -294,6 +332,8 @@ nobody is reading a tool description. Two sentences, because this is paid for on
 
 Implement `CirrusTool`, register it in `ToolRegistry` (via `GitHubToolSet` for GitHub ones), and:
 
+- **Declare `writes`** if the effect outlives the turn, is outside Cirrus, and cannot be undone by
+  calling the tool again. Reversible or local effects are not writes — see the gate above.
 - **Never throw.** The model is mid-turn; an exception ends the turn with a stack trace instead of
   letting it recover. Wrap the body in the neighbouring set's helper — `GitHubTool`'s base class,
   `memoryTool { }`, `shellTool { }` — and return a JSON error object. Each of those rethrows
@@ -379,6 +419,18 @@ Unit tests live in `app/src/test/java/...` mirroring the main package. Run with
   hence the `shell.available`/`shell.missing` block in `system_info`. The honest answer for someone
   who wants a package manager is a terminal app with its own userland, which `install_app` can offer
   and nothing here can be.
+- A **refusal is not "Unknown tool"**. `ToolRegistry.explainRefusal` names the switch that is in the
+  way and where it lives, because a model that cannot tell "this app cannot do that" from "not until
+  somebody flips a switch" guesses the first one — and then tells the user their app lacks a feature
+  it shipped with, with nothing in the conversation to correct it.
+- **Spotify's playback API needs Premium** and answers 403 on free accounts with a message about
+  nothing else. `SpotifyTool` catches it and points at `media_control`, which drives Android's own
+  media keys, needs no account, and works with any player. A 404 on `me/player` means no active
+  device, not a missing endpoint.
+- The Spotify redirect is `cirrus://spotify/callback` and must match the registration **exactly**.
+  `MainActivity` is `singleTop` so the return lands in `onNewIntent` rather than a second instance,
+  and the PKCE verifier is persisted rather than held in memory — Android is free to kill Cirrus
+  while somebody reads the consent screen.
 - **Android blocks activity starts from the background**, so `open_app` and `install_app` check
   `IMPORTANCE_FOREGROUND` first and return an explanation rather than reporting success for a screen
   that never appeared. A scheduled agent calling either at 3am gets the refusal, which is correct.

@@ -1,6 +1,13 @@
 package dev.klaiber.cirrus.ui
 
+import android.Manifest
+import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.net.toUri
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
@@ -23,6 +30,7 @@ import dev.klaiber.cirrus.ui.onboarding.OnboardingScreen
 import dev.klaiber.cirrus.ui.settings.SettingsScreen
 import dev.klaiber.cirrus.ui.settings.SettingsSection
 import dev.klaiber.cirrus.ui.settings.SettingsSectionScreen
+import dev.klaiber.cirrus.ui.settings.SettingsViewModel
 import dev.klaiber.cirrus.ui.settings.mcp.McpServersScreen
 import kotlinx.coroutines.launch
 
@@ -140,12 +148,40 @@ fun CirrusApp(
                 route = Routes.SETTINGS_SECTION,
                 arguments = listOf(navArgument(Routes.SECTION_ARG) { type = NavType.StringType }),
             ) { entry ->
+                val viewModel: SettingsViewModel = hiltViewModel()
+                val context = LocalContext.current
+
+                // The permission dialog and the browser both need an Activity, which a ViewModel
+                // must not hold. Both therefore start here and report back.
+                val locationPermission = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission(),
+                ) { granted -> viewModel.setLocationEnabled(granted, granted) }
+
                 SettingsSectionScreen(
                     section = SettingsSection.fromRoute(
                         entry.arguments?.getString(Routes.SECTION_ARG),
                     ),
                     onBack = { navController.popBackStack() },
                     onOpenMcpServers = { navController.navigate(Routes.MCP_SERVERS) },
+                    onLocationToggle = { wanted ->
+                        if (wanted) {
+                            // Asking is the switch. Android shows nothing if the permission is
+                            // already held, in which case the callback answers immediately.
+                            locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                        } else {
+                            viewModel.setLocationEnabled(false, permissionGranted = false)
+                        }
+                    },
+                    onSpotifyConnect = {
+                        scope.launch {
+                            viewModel.beginSpotifySignIn()?.let { url ->
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                                }
+                            }
+                        }
+                    },
+                    viewModel = viewModel,
                 )
             }
 

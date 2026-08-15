@@ -2,10 +2,12 @@ package dev.klaiber.cirrus.domain.tools
 
 import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dev.klaiber.cirrus.data.repository.SettingsRepository
+import dev.klaiber.cirrus.domain.model.AppSettings
+import dev.klaiber.cirrus.domain.settings.SettingSwitch
 import dev.klaiber.cirrus.domain.tools.github.CommentTool
 import dev.klaiber.cirrus.domain.tools.github.CreateIssueTool
-import dev.klaiber.cirrus.domain.tools.github.GitHubTool
 import dev.klaiber.cirrus.domain.tools.github.GetIssueTool
 import dev.klaiber.cirrus.domain.tools.github.GetPullRequestTool
 import dev.klaiber.cirrus.domain.tools.github.ListDirectoryTool
@@ -40,6 +42,22 @@ interface CirrusTool {
 
     /** OpenAI-style function schema, sent in `ChatRequest.tools`. */
     val definition: JsonElement
+
+    /**
+     * True when the effect outlives the turn, happens outside Cirrus, and cannot be reversed by
+     * calling the same tool again.
+     *
+     * That definition is narrower than "changes something", and each clause is doing work. Pausing
+     * music changes something and is not a write: the next call unpauses it. Remembering a fact
+     * changes something and is not a write: it is Cirrus's own store, and the memory screen
+     * restores anything. Opening a GitHub issue is a write, because there is no call that unopens
+     * it and other people can already see it.
+     *
+     * Getting this wrong in the cautious direction is not free either — gating memory behind the
+     * write switch would mean cross-session memory silently not working, which is indistinguishable
+     * from it being broken. The test is the reversibility, not the severity.
+     */
+    val writes: Boolean get() = false
 
     suspend fun execute(arguments: JsonObject): String
 }
@@ -171,105 +189,164 @@ class ToolRegistry @Inject constructor(
     private val gitHubTools: GitHubToolSet,
     private val memoryTools: MemoryToolSet,
     private val notificationTool: SendNotificationTool,
-    private val shellTools: ShellToolSet,
+    private val deviceTools: DeviceToolSet,
+    private val spotifyTools: SpotifyToolSet,
+    private val settingsTool: DescribeSettingsTool,
     private val mcpTools: McpToolSet,
     private val settingsRepository: SettingsRepository,
     private val gitHubCredentials: GitHubCredentials,
+    private val spotifyCredentials: SpotifyCredentials,
 ) {
     private val webTools: List<CirrusTool> = listOf(webSearchTool, webFetchTool)
 
-    /** Tools that exist for the life of the process; MCP tools come and go, so are resolved live. */
-    private val staticTools: Map<String, CirrusTool> =
-        (webTools + gitHubTools.all + memoryTools.all + shellTools.all + notificationTool)
-            .associateBy { it.name }
-
     /**
-     * What to offer the model this turn.
+     * Every tool, with what stands between it and running.
      *
-     * [externalTools] is the conversation's own tools switch, and it only governs the tools that
-     * reach outside the phone: search, GitHub, MCP. Memory and notifications are not on that
-     * switch. They are local, free and instant, and the switch exists to control latency, cost and
-     * what leaves the device — none of which they spend. Gating memory behind it would mean
-     * cross-session memory silently not working in most conversations, which is indistinguishable
-     * from it being broken.
+     * Rebuilt per call because most of it is dynamic — MCP tools come and go with their servers —
+     * and because there is exactly one thing worse than recomputing a list: two lists. This used to
+     * be a chain of `if`s in [definitions] and a second, subtly different chain in [find], which is
+     * how a GitHub write ended up offered in one and refused in the other. "Was it offered?" and
+     * "may it run?" are now the same question asked of the same table.
      */
-    fun definitions(externalTools: Boolean): List<JsonElement> = buildList {
-        val settings = settingsRepository.current.value
+    private data class Group(
+        val tools: List<CirrusTool>,
+        /** The settings switch that governs it, or null when nothing does. */
+        val gate: SettingSwitch?,
+        /** Whether the conversation's own tools switch has to be on as well. */
+        val external: Boolean,
+        /**
+         * Whether the credential behind the switch is actually present.
+         *
+         * Read from the credential holder rather than from [AppSettings], and the difference is not
+         * academic: the holder is what the HTTP layer will use, while the settings field is a
+         * mirror of it kept up to date by a collector on another scope. Gating on the mirror means
+         * that for the moment after a token is saved — which is exactly when someone tries the
+         * feature — the gate and the client disagree about whether there is a token.
+         */
+        val ready: Boolean = true,
+    )
 
+    private fun groups(): List<Group> = listOf(
         // Offered as a set: recall with nothing to find is a wasted round trip, and remember with
         // no way to correct it is worse than not remembering at all.
-        if (settings.memoryEnabled) {
-            addAll(memoryTools.all.map { it.definition })
-        }
-        if (settings.notificationToolEnabled) {
-            add(notificationTool.definition)
-        }
+        Group(memoryTools.all, SettingSwitch.MEMORY, external = false),
+        Group(listOf(notificationTool), SettingSwitch.NOTIFICATIONS, external = false),
         // The shell, the clock and the calendar are on the same footing as memory: local, instant,
         // and nothing leaves the phone. A model that cannot ask what today's date is answers every
         // scheduling question from the year it was trained in, which is wrong in the way that looks
         // most convincing.
-        if (settings.shellToolsEnabled) {
-            addAll(shellTools.device.map { it.definition })
-        }
-        if (settings.appControlEnabled) {
-            addAll(shellTools.apps.map { it.definition })
-        }
-
-        if (!externalTools) return@buildList
-
-        addAll(webTools.map { it.definition })
-        if (gitHubEnabled) {
-            val writesAllowed = gitHubCredentials.writesAllowed
-            gitHubTools.all
-                .filter { writesAllowed || it !in gitHubTools.writeTools }
-                .forEach { add(it.definition) }
-        }
+        Group(deviceTools.shell, SettingSwitch.SHELL, external = false),
+        Group(deviceTools.apps, SettingSwitch.APPS, external = false),
+        Group(deviceTools.location, SettingSwitch.LOCATION, external = false),
+        // Ungated on purpose, and the only tool that is. It is how a model finds out that the
+        // reason it cannot do something is a switch rather than a missing feature, so putting it
+        // behind a switch would be a joke at the user's expense.
+        Group(listOf(settingsTool), gate = null, external = false),
+        Group(webTools, gate = null, external = true),
+        Group(
+            tools = gitHubTools.all,
+            gate = SettingSwitch.GITHUB,
+            external = true,
+            ready = gitHubCredentials.isConfigured,
+        ),
+        Group(
+            tools = spotifyTools.all,
+            gate = SettingSwitch.SPOTIFY,
+            external = true,
+            ready = spotifyCredentials.isConnected,
+        ),
         // Only servers whose tools have actually been listed contribute here, so one that is
         // switched off or unreachable is silently absent rather than offered and broken.
-        addAll(mcpTools.all.map { it.definition })
+        Group(mcpTools.all, gate = null, external = true),
+    )
+
+    /** What to offer the model this turn. */
+    fun definitions(externalTools: Boolean): List<JsonElement> {
+        val settings = settingsRepository.current.value
+        return groups().flatMap { group ->
+            group.tools
+                .filter { access(it, group, settings, externalTools) is Access.Allowed }
+                .map { it.definition }
+        }
     }
 
     /**
      * Resolves a tool the model asked for, or null if it may not run.
      *
-     * [externalTools] is checked here and not only when the schemas are built, because "was it
-     * offered?" and "may it run?" have to be the same question. A model that has seen `web_search`
-     * in an earlier turn — or simply guesses the name — must not be able to reach the network
-     * after the user switched external tools off. Being told the tool is unknown is the right
-     * answer: it is unknown, this turn.
-     *
      * Built-ins win ties. [McpTool.qualifiedName] namespaces every MCP tool, so a collision means a
      * server picked a name that looks namespaced, and resolving to the built-in is the safe way to
-     * break it: a remote server must not take over `web_search` by naming a tool after it.
+     * break it: a remote server must not take over `web_search` by naming a tool after it. The
+     * group order above is that precedence.
      */
-    fun find(name: String, externalTools: Boolean = true): CirrusTool? {
+    fun find(name: String, externalTools: Boolean = true): CirrusTool? =
+        (resolve(name, externalTools) as? Access.Allowed)?.tool
+
+    /**
+     * Why a call did not run, addressed to the model.
+     *
+     * The reason this is not just "Unknown tool" is that a model cannot otherwise tell "this app
+     * cannot do that" from "this app can do that, but not until somebody flips a switch". It
+     * guesses, and it guesses the first one — so the user is told their app lacks a feature it
+     * shipped with, and nothing in the conversation will ever correct that.
+     */
+    fun explainRefusal(name: String, externalTools: Boolean = true): String =
+        when (val access = resolve(name, externalTools)) {
+            is Access.Allowed -> "Unknown tool: $name"
+            is Access.Blocked -> access.explanation
+            Access.Unknown -> "Unknown tool: $name. Call describe_settings to see what is " +
+                "available and what is switched off."
+        }
+
+    private fun resolve(name: String, externalTools: Boolean): Access {
         val settings = settingsRepository.current.value
-
-        memoryTools.all.firstOrNull { it.name == name }
-            ?.let { return it.takeIf { settings.memoryEnabled } }
-        if (name == notificationTool.name) {
-            return notificationTool.takeIf { settings.notificationToolEnabled }
+        groups().forEach { group ->
+            val tool = group.tools.firstOrNull { it.name == name } ?: return@forEach
+            return access(tool, group, settings, externalTools)
         }
-        shellTools.device.firstOrNull { it.name == name }
-            ?.let { return it.takeIf { settings.shellToolsEnabled } }
-        shellTools.apps.firstOrNull { it.name == name }
-            ?.let { return it.takeIf { settings.appControlEnabled } }
+        return Access.Unknown
+    }
 
-        if (!externalTools) return null
+    private sealed interface Access {
+        data class Allowed(val tool: CirrusTool) : Access
+        data class Blocked(val explanation: String) : Access
+        data object Unknown : Access
+    }
 
-        // GitHub carries two gates of its own beyond the external switch, and both have to be asked
-        // here as well as when the schemas are built — `staticTools` holds every GitHub tool
-        // unconditionally, so falling through to it would resolve one that was never offered: with
-        // the feature switched off, or with no token at all, or a write while writes are refused.
-        // The client refuses a write of its own accord, but a *read* would have gone out with the
-        // user's token attached against a setting that says not to.
-        gitHubTools.all.firstOrNull { it.name == name }?.let { tool ->
-            if (!gitHubEnabled) return null
-            if (tool in gitHubTools.writeTools && !gitHubCredentials.writesAllowed) return null
-            return tool
-        }
+    /**
+     * The one place a tool is allowed or refused.
+     *
+     * Order matters only for which explanation is given, and it goes from the switch nearest the
+     * user outwards: the toggle in the message box they can see, then the setting, then the
+     * credential behind it, then the write gate.
+     */
+    private fun access(
+        tool: CirrusTool,
+        group: Group,
+        settings: AppSettings,
+        externalTools: Boolean,
+    ): Access = when {
+        group.external && !externalTools -> Access.Blocked(
+            "${tool.name} needs the tools switch for this conversation, which is off. It is the " +
+                "toggle in the message box; ask the user to turn it on. It governs everything " +
+                "that leaves the phone — web search, GitHub, Spotify and MCP servers.",
+        )
 
-        return staticTools[name] ?: mcpTools.find(name)
+        group.gate != null && !group.gate.isOn(settings) -> Access.Blocked(
+            "${tool.name} is switched off. ${group.gate.remedy(settings)}",
+        )
+
+        !group.ready -> Access.Blocked(
+            "${tool.name} is switched on but not signed in or configured yet. " +
+                (group.gate?.remedy(settings) ?: group.gate?.credentialHint.orEmpty()),
+        )
+
+        tool.writes && !settings.writeToolsAllowed -> Access.Blocked(
+            "${tool.name} changes something outside Cirrus, and write actions are off. " +
+                "${SettingSwitch.WRITES.remedy(settings)} Everything read-only still works, so " +
+                "say what you would have done and let the user decide.",
+        )
+
+        else -> Access.Allowed(tool)
     }
 
     /**
@@ -287,7 +364,7 @@ class ToolRegistry @Inject constructor(
         val settings = settingsRepository.current.value
         // The emptiness check is not belt-and-braces: it is what stops the brief describing a shell
         // to a build that has none.
-        if (!settings.shellToolsEnabled || shellTools.device.isEmpty()) return null
+        if (!settings.shellToolsEnabled || deviceTools.shell.isEmpty()) return null
         return "You can run shell commands on this phone with run_command. It works inside a " +
             "private scratch workspace and can reach nothing outside it. Two rules hold for the " +
             "whole conversation: be non-destructive — read before you write, and never remove a " +
@@ -296,33 +373,39 @@ class ToolRegistry @Inject constructor(
             "assuming today's date."
     }
 
-    private val gitHubEnabled: Boolean
-        get() = settingsRepository.current.value.gitHubToolsEnabled &&
-            gitHubCredentials.isConfigured
 }
 
 /**
- * The local tool set, split by what it is allowed to do.
+ * The tools that run on the phone itself, split by the switch each one answers to.
  *
- * Two lists rather than one, because they answer to two different switches and the difference is
- * real: [device] answers questions and touches nothing outside a scratch directory, while [apps]
- * acts on the phone — it puts another app in front of whatever the user was reading. Assembled in
- * `AppModule` rather than injected as a set, in the same spirit as [GitHubToolSet]: an explicit
- * list is far easier to audit when the question is "which of these can do something?"
+ * Three lists rather than one, because the three ask the user for genuinely different things.
+ * [shell] answers questions and touches nothing outside a scratch directory. [apps] acts — it puts
+ * another app in front of whatever was being read, or starts music playing out loud. [location]
+ * reads the most personal thing here, and is the only one that also needs Android's own permission.
+ *
+ * Assembled in `AppModule` rather than injected as a set, in the same spirit as [GitHubToolSet]: an
+ * explicit list is far easier to audit when the question is "which of these can do something?"
  */
-class ShellToolSet(
-    val device: List<CirrusTool>,
+class DeviceToolSet(
+    val shell: List<CirrusTool>,
     val apps: List<CirrusTool>,
+    val location: List<CirrusTool>,
 ) {
-    val all: List<CirrusTool> = device + apps
+    val all: List<CirrusTool> = shell + apps + location
 }
 
 /**
- * The GitHub tools, grouped so the registry can tell reads from writes.
+ * The Spotify tools. One list: [CirrusTool.writes] now carries the read/write split that used to
+ * need a second one.
+ */
+class SpotifyToolSet(val all: List<CirrusTool>)
+
+/**
+ * The GitHub tools.
  *
- * Hilt has no multibinding set up in this project, and an explicit list is easier to audit than
- * an injected set when the question "which of these can change something?" has to have an
- * obviously correct answer.
+ * Hilt has no multibinding set up in this project, and an explicit list is easier to audit than an
+ * injected set. Which of them write is no longer this class's business — each tool declares it on
+ * [CirrusTool.writes], and one gate in [ToolRegistry] reads that for every integration alike.
  */
 @Singleton
 class GitHubToolSet @Inject constructor(
@@ -354,8 +437,6 @@ class GitHubToolSet @Inject constructor(
         writeFile,
     )
 
-    /** Tools that change state on GitHub, derived from each tool's [GitHubTool.writes]. */
-    val writeTools: Set<CirrusTool> = all.filter { it is GitHubTool && it.writes }.toSet()
 }
 
 /** `jsonPrimitive.content` throws on JSON null; this returns null instead. */

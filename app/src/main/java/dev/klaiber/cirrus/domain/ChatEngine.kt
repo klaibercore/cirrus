@@ -131,8 +131,14 @@ class ChatEngine @Inject constructor(
                 val startedAt = System.currentTimeMillis()
                 val tool = toolRegistry.find(call.function.name, conversation.toolsEnabled)
                 val outcome = if (tool == null) {
+                    // Not merely "unknown": a tool that exists but is gated gets told which switch
+                    // is in the way and where the user finds it, so the model can say something
+                    // true rather than concluding the app cannot do it at all.
                     invocation.copy(
-                        errorMessage = "Unknown tool: ${call.function.name}",
+                        errorMessage = toolRegistry.explainRefusal(
+                            call.function.name,
+                            conversation.toolsEnabled,
+                        ),
                         durationMs = 0L,
                     )
                 } else {
