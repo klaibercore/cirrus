@@ -204,6 +204,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setMemoryEnabled(enabled) }
     }
 
+    fun setMemoryConsolidationEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setMemoryConsolidationEnabled(enabled) }
+    }
+
     fun setNotificationToolEnabled(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setNotificationToolEnabled(enabled) }
     }

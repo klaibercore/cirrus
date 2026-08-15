@@ -31,7 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Refusals now name the exact switch and where it lives, and `describe_settings` lets the model
   check before promising anything.
 - **Spotify in the MCP catalogue**, alongside GitHub, Sentry, Linear and the rest.
-
 - **A shell, for the everyday mechanical jobs.** Cirrus can now run commands on the phone: counting
   and sorting text, checksums and encodings, working with the scratch files it wrote a moment ago.
   What it may run is decided before anything runs, from a list you can read in one sitting — only

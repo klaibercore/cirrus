@@ -653,6 +653,17 @@ fun SettingsSectionScreen(
                     onCheckedChange = viewModel::setMemoryEnabled,
                 )
                 SwitchRow(
+                    title = "Nightly memory tidy-up",
+                    subtitle = "Merge duplicates and retire what has been superseded, while you sleep",
+                    help = "Once a night, Cirrus reads the conversations you have had since the " +
+                        "last pass, harvests anything durable, then merges near-duplicate " +
+                        "memories and retires ones that have been overtaken. Nothing is deleted — " +
+                        "retiring is archiving, and the Memory screen restores anything.",
+                    checked = state.settings.memoryConsolidationEnabled,
+                    onCheckedChange = viewModel::setMemoryConsolidationEnabled,
+                    enabled = state.settings.memoryEnabled,
+                )
+                SwitchRow(
                     title = "Notifications",
                     subtitle = "Let a reply reach you when you are not looking at Cirrus",
                     help = "Mostly for scheduled agents: an answer written at 3am is worthless if " +
