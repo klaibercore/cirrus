@@ -52,10 +52,15 @@ import java.util.Locale
  * A lone call is left as its own row, deliberately. Wrapping one call in a group header means
  * reading its name twice, and one card between question and answer was never the problem.
  *
- * Open while it runs, shut when it lands, which is [ThinkingSection]'s rule and for the same reason:
- * there has to be something to watch while nothing is being said, and nothing to step over once
- * there is an answer to read. The `remember` key does the closing — when the last call completes the
- * key changes, and the state resets to collapsed.
+ * Open while it runs, shut when it lands, which is the reasoning trace's rule and for the same
+ * reason: there has to be something to watch while nothing is being said, and nothing to step over
+ * once there is an answer to read. Closing is one-way — a sixth call arriving after the fifth has
+ * landed does not reopen a group the reader has already watched close, and does not undo a group
+ * they closed themselves. [SectionExpansion] holds that latch and says why.
+ *
+ * It only opens itself for work that is entirely ahead of it. A group that comes into existence
+ * already holding a finished call is a group that appeared *beside an answer being read*, and
+ * unfolding five rows there pushes the sentence under the reader's eyes down the screen.
  */
 @Composable
 fun ToolActivity(invocations: List<ToolInvocation>, modifier: Modifier = Modifier) {
@@ -69,14 +74,18 @@ fun ToolActivity(invocations: List<ToolInvocation>, modifier: Modifier = Modifie
     }
 
     val running = invocations.any { !it.isComplete }
-    var expanded by remember(running) { mutableStateOf(running) }
+    val expansion = rememberSectionExpansion(
+        active = running,
+        openWhileActive = invocations.none { it.isComplete },
+    )
+    val expanded = expansion.expanded
 
     OutlinedPanel(modifier = modifier.fillMaxWidth()) {
         Column {
             GroupHeader(
                 invocations = invocations,
                 expanded = expanded,
-                onToggle = { expanded = !expanded },
+                onToggle = expansion::toggle,
             )
             AnimatedVisibility(visible = expanded) {
                 Column {

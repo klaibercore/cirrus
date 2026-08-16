@@ -271,7 +271,9 @@ private fun AssistantMessage(
  * Collapsible reasoning trace.
  *
  * Expanded while it is the only thing streaming so there is something to watch, then collapsed
- * once the answer starts — the trace is for auditing, not for reading every time.
+ * once the answer starts — the trace is for auditing, not for reading every time. It stays shut
+ * after that even when the model goes back to thinking between tool calls, and a tap overrides both
+ * rules for good; see [SectionExpansion] for why that is a latch rather than a `remember` key.
  */
 @Composable
 private fun ThinkingSection(
@@ -279,7 +281,8 @@ private fun ThinkingSection(
     isStreaming: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by remember(isStreaming) { mutableStateOf(isStreaming) }
+    val expansion = rememberSectionExpansion(active = isStreaming)
+    val expanded = expansion.expanded
 
     // Outlined rather than filled. A tinted panel inside a reply competes with the code blocks
     // below it for the reader's "this part is different" signal; a hairline box says the same thing
@@ -289,7 +292,7 @@ private fun ThinkingSection(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded }
+                    .clickable { expansion.toggle() }
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
