@@ -16,7 +16,9 @@ import dev.klaiber.cirrus.domain.model.AppSettings
  * not actionable, and "Settings → Tools → Memory" is.
  *
  * Desktop drops the phone-only switches (location, Spotify) — the desktop build has no such tools,
- * and a switch that cannot do anything would only mislead the model into promising it.
+ * and a switch that cannot do anything would only mislead the model into promising it. The [path]
+ * strings name sections of `SettingsScreen`; when a section is renamed, these move with it, or they
+ * send someone looking for a row that is not there.
  */
 enum class SettingSwitch(
     val id: String,
@@ -72,7 +74,7 @@ enum class SettingSwitch(
     GITHUB(
         id = "github",
         title = "GitHub tools",
-        path = "Settings → GitHub and MCP → GitHub tools",
+        path = "Settings → GitHub → GitHub tools",
         summary = "Reading repositories, code, issues and pull requests.",
         reader = AppSettings::gitHubToolsEnabled,
         credential = Credential(

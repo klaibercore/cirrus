@@ -1,0 +1,101 @@
+package dev.klaiber.cirrus.desktop
+
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
+import dev.klaiber.cirrus.di.AppContainer
+import dev.klaiber.cirrus.domain.model.AppSettings
+import dev.klaiber.cirrus.domain.model.ThemeMode
+import dev.klaiber.cirrus.ui.ChatScreen
+import dev.klaiber.cirrus.ui.SettingsScreen
+import dev.klaiber.cirrus.ui.theme.CirrusTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.runBlocking
+import java.io.File
+
+/**
+ * The desktop entry point.
+ *
+ * The application scope is created here and outlives every window, for the same reason
+ * `TurnController` runs on Android's application scope: a turn, a title request and a memory write
+ * must not be cancelled because the screen showing them went away.
+ */
+fun main() {
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val container = AppContainer(dataDir = dataDirectory(), scope = applicationScope)
+
+    // The stores are small local files and the window has nothing to show without them, so this is
+    // read before the first frame rather than raced against it.
+    runBlocking { container.start() }
+
+    application {
+        val windowState = rememberWindowState(size = DpSize(1180.dp, 820.dp))
+        Window(
+            onCloseRequest = ::exitApplication,
+            state = windowState,
+            title = "Cirrus",
+        ) {
+            // A tray click brings the window forward; the notifier only knows that something
+            // should happen, not what window there is to raise.
+            container.notifier.onTrayClick = {
+                window.toFront()
+                window.requestFocus()
+            }
+            CirrusApp(container)
+        }
+    }
+}
+
+@Composable
+private fun CirrusApp(container: AppContainer) {
+    val settings by container.settingsRepository.settings.collectAsState(AppSettings())
+    var showSettings by remember { mutableStateOf(false) }
+
+    CirrusTheme(darkTheme = settings.themeMode.isDark()) {
+        Surface(Modifier) {
+            if (showSettings) {
+                SettingsScreen(container = container, onClose = { showSettings = false })
+            } else {
+                ChatScreen(container = container, onOpenSettings = { showSettings = true })
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeMode.isDark(): Boolean = when (this) {
+    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+}
+
+/**
+ * Where Cirrus keeps its data, following each platform's own convention.
+ *
+ * Not the working directory: a packaged app is launched from wherever the launcher happens to be,
+ * and writing conversations next to the binary means losing them on the next install.
+ */
+private fun dataDirectory(): File {
+    val os = System.getProperty("os.name").orEmpty().lowercase()
+    val home = File(System.getProperty("user.home") ?: ".")
+    val directory = when {
+        os.contains("mac") -> File(home, "Library/Application Support/Cirrus")
+        os.contains("win") -> File(System.getenv("APPDATA") ?: home.path, "Cirrus")
+        else -> File(System.getenv("XDG_DATA_HOME") ?: File(home, ".local/share").path, "cirrus")
+    }
+    directory.mkdirs()
+    return directory
+}
