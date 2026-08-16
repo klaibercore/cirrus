@@ -1,10 +1,14 @@
 package dev.klaiber.cirrus.domain.tools
 
+import dev.klaiber.cirrus.data.mcp.McpClient
+import dev.klaiber.cirrus.data.mcp.SseMcpTransport
+import dev.klaiber.cirrus.data.mcp.StreamableHttpMcpTransport
 import dev.klaiber.cirrus.data.remote.ApiCredentials
 import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.repository.JsonStore
+import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.MemoryRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.notify.Notifier
@@ -20,6 +24,9 @@ import dev.klaiber.cirrus.domain.tools.github.ReadFileTool
 import dev.klaiber.cirrus.domain.tools.github.ReviewPullRequestTool
 import dev.klaiber.cirrus.domain.tools.github.SearchCodeTool
 import dev.klaiber.cirrus.domain.tools.github.WriteFileTool
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -76,6 +83,17 @@ class ToolRegistryTest {
         val memories = MemoryRepository(
             JsonStore(File(file.absolutePath + ".memories"), json),
         )
+        val mcpClient = McpClient(
+            StreamableHttpMcpTransport(http),
+            SseMcpTransport(http, json),
+            json,
+        )
+        val mcpServerRepository = McpServerRepository(
+            store = JsonStore(File(file.absolutePath + ".mcp"), json),
+            client = mcpClient,
+            json = json,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        )
 
         registry = ToolRegistry(
             webSearchTool = WebSearchTool(ollama, settings),
@@ -108,6 +126,8 @@ class ToolRegistryTest {
                 apps = listOf(StubTool("open_app")),
             ),
             settingsTool = DescribeSettingsTool(settings),
+            // No server is attached, so this contributes nothing to the offered definitions.
+            mcpTools = McpToolSet(repository = mcpServerRepository, client = mcpClient),
             settingsRepository = settings,
             gitHubCredentials = gitHubCredentials,
         )
@@ -117,6 +137,7 @@ class ToolRegistryTest {
     fun tearDown() {
         file.delete()
         File(file.absolutePath + ".memories").delete()
+        File(file.absolutePath + ".mcp").delete()
     }
 
     // ---- The external-tools switch --------------------------------------------------------

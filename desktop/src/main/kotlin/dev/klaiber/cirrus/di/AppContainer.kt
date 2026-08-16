@@ -3,10 +3,14 @@ package dev.klaiber.cirrus.di
 import dev.klaiber.cirrus.data.remote.ApiCredentials
 import dev.klaiber.cirrus.data.remote.ModelCapabilityDetector
 import dev.klaiber.cirrus.data.remote.OllamaClient
+import dev.klaiber.cirrus.data.mcp.McpClient
+import dev.klaiber.cirrus.data.mcp.SseMcpTransport
+import dev.klaiber.cirrus.data.mcp.StreamableHttpMcpTransport
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.repository.ConversationRepository
 import dev.klaiber.cirrus.data.repository.JsonStore
+import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.MemoryRepository
 import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
@@ -19,6 +23,7 @@ import dev.klaiber.cirrus.domain.tools.DescribeSettingsTool
 import dev.klaiber.cirrus.domain.tools.DeviceToolSet
 import dev.klaiber.cirrus.domain.tools.ForgetTool
 import dev.klaiber.cirrus.domain.tools.GitHubToolSet
+import dev.klaiber.cirrus.domain.tools.McpToolSet
 import dev.klaiber.cirrus.domain.tools.MemoryToolSet
 import dev.klaiber.cirrus.domain.tools.RecallTool
 import dev.klaiber.cirrus.domain.tools.RememberTool
@@ -104,6 +109,30 @@ class AppContainer(
         .retryOnConnectionFailure(true)
         .build()
 
+    /**
+     * The MCP client carries **no** credential of its own.
+     *
+     * An interceptor's `header()` replaces whatever the request already had, so pointing the MCP
+     * transports at either client above would send every attached server the user's Ollama or
+     * GitHub token instead of its own. Anything per-request-credentialled belongs on a client with
+     * no auth interceptor.
+     */
+    private val mcpHttp: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            chain.proceed(
+                chain.request().newBuilder()
+                    .header("User-Agent", "Cirrus/1.0.0 (Desktop)")
+                    .build(),
+            )
+        }
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        // No call timeout: an SSE transport holds the response open by design.
+        .callTimeout(0, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .build()
+
     private val gitHubHttp: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
             val builder = chain.request().newBuilder()
@@ -124,6 +153,12 @@ class AppContainer(
     val gitHubClient = GitHubClient(gitHubHttp, wireJson, gitHubCredentials)
     private val capabilityDetector = ModelCapabilityDetector(wireJson)
 
+    val mcpClient = McpClient(
+        streamableHttp = StreamableHttpMcpTransport(mcpHttp),
+        sse = SseMcpTransport(mcpHttp, wireJson),
+        json = wireJson,
+    )
+
     // ---- Repositories ------------------------------------------------------------------------
 
     val settingsRepository = SettingsRepository(
@@ -138,6 +173,13 @@ class AppContainer(
 
     val memoryRepository = MemoryRepository(
         store = JsonStore(File(dataDir, "memories.json"), persistenceJson),
+    )
+
+    val mcpServerRepository = McpServerRepository(
+        store = JsonStore(File(dataDir, "mcp-servers.json"), persistenceJson),
+        client = mcpClient,
+        json = wireJson,
+        scope = scope,
     )
 
     val modelRepository = ModelRepository(ollamaClient, capabilityDetector, scope)
@@ -191,6 +233,8 @@ class AppContainer(
 
     private val settingsTool = DescribeSettingsTool(settingsRepository)
 
+    private val mcpToolSet = McpToolSet(repository = mcpServerRepository, client = mcpClient)
+
     val toolRegistry = ToolRegistry(
         webSearchTool = webSearchTool,
         webFetchTool = webFetchTool,
@@ -199,6 +243,7 @@ class AppContainer(
         notificationTool = notificationTool,
         deviceTools = deviceToolSet,
         settingsTool = settingsTool,
+        mcpTools = mcpToolSet,
         settingsRepository = settingsRepository,
         gitHubCredentials = gitHubCredentials,
     )
@@ -229,6 +274,7 @@ class AppContainer(
         settingsRepository.load()
         conversationRepository.load()
         memoryRepository.load()
+        mcpServerRepository.load()
         shellWorkspace.clear()
     }
 }

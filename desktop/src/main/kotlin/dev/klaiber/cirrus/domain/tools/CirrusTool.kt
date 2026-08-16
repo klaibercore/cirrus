@@ -186,6 +186,7 @@ class ToolRegistry(
     private val notificationTool: SendNotificationTool,
     private val deviceTools: DeviceToolSet,
     private val settingsTool: DescribeSettingsTool,
+    private val mcpTools: McpToolSet,
     private val settingsRepository: SettingsRepository,
     private val gitHubCredentials: GitHubCredentials,
 ) {
@@ -240,6 +241,9 @@ class ToolRegistry(
             external = true,
             ready = gitHubCredentials.isConfigured,
         ),
+        // Only servers whose tools have actually been listed contribute here, so one that is
+        // switched off or unreachable is silently absent rather than offered and broken.
+        Group(mcpTools.all, gate = null, external = true),
     )
 
     /** What to offer the model this turn. */
@@ -255,7 +259,10 @@ class ToolRegistry(
     /**
      * Resolves a tool the model asked for, or null if it may not run.
      *
-     * Built-ins win ties. The group order above is that precedence.
+     * Built-ins win ties. [McpTool.qualifiedName] namespaces every MCP tool, so a collision means a
+     * server picked a name that looks namespaced, and resolving to the built-in is the safe way to
+     * break it: a remote server must not take over `web_search` by naming a tool after it. The
+     * group order above is that precedence.
      */
     fun find(name: String, externalTools: Boolean = true): CirrusTool? =
         (resolve(name, externalTools) as? Access.Allowed)?.tool

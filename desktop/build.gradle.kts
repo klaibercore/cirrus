@@ -17,6 +17,7 @@ dependencies {
     implementation(compose.materialIconsExtended)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+    implementation(libs.okhttp.sse)
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.javax.inject)
 

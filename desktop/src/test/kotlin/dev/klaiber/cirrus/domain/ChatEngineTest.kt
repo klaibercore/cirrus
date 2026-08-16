@@ -1,12 +1,16 @@
 package dev.klaiber.cirrus.domain
 
 import app.cash.turbine.test
+import dev.klaiber.cirrus.data.mcp.McpClient
+import dev.klaiber.cirrus.data.mcp.SseMcpTransport
+import dev.klaiber.cirrus.data.mcp.StreamableHttpMcpTransport
 import dev.klaiber.cirrus.data.remote.ApiCredentials
 import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.OllamaException
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.repository.JsonStore
+import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.MemoryRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.model.AppSettings
@@ -19,6 +23,7 @@ import dev.klaiber.cirrus.domain.tools.DescribeSettingsTool
 import dev.klaiber.cirrus.domain.tools.DeviceToolSet
 import dev.klaiber.cirrus.domain.tools.ForgetTool
 import dev.klaiber.cirrus.domain.tools.GitHubToolSet
+import dev.klaiber.cirrus.domain.tools.McpToolSet
 import dev.klaiber.cirrus.domain.tools.MemoryToolSet
 import dev.klaiber.cirrus.domain.tools.RecallTool
 import dev.klaiber.cirrus.domain.tools.RememberTool
@@ -38,6 +43,9 @@ import dev.klaiber.cirrus.domain.tools.github.ReadFileTool
 import dev.klaiber.cirrus.domain.tools.github.ReviewPullRequestTool
 import dev.klaiber.cirrus.domain.tools.github.SearchCodeTool
 import dev.klaiber.cirrus.domain.tools.github.WriteFileTool
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -98,6 +106,19 @@ class ChatEngineTest {
         )
         val memoryRepository = MemoryRepository(JsonStore(memoryFile, json))
         val gitHubClient = GitHubClient(OkHttpClient(), json, gitHubCredentials)
+        val mcpFile = File.createTempFile("cirrus-engine-mcp-", ".json").also { it.delete() }
+        temporaryFiles += mcpFile
+        val mcpClient = McpClient(
+            StreamableHttpMcpTransport(OkHttpClient()),
+            SseMcpTransport(OkHttpClient(), json),
+            json,
+        )
+        val mcpServerRepository = McpServerRepository(
+            store = JsonStore(mcpFile, json),
+            client = mcpClient,
+            json = json,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        )
 
         return ToolRegistry(
             webSearchTool = WebSearchTool(client, settingsRepository),
@@ -124,6 +145,8 @@ class ChatEngineTest {
             notificationTool = SendNotificationTool(RecordingNotifier()),
             deviceTools = DeviceToolSet(shell = emptyList(), apps = emptyList()),
             settingsTool = DescribeSettingsTool(settingsRepository),
+            // No server is attached, so this contributes nothing to the offered definitions.
+            mcpTools = McpToolSet(repository = mcpServerRepository, client = mcpClient),
             settingsRepository = settingsRepository,
             gitHubCredentials = gitHubCredentials,
         )
