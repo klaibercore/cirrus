@@ -23,6 +23,7 @@ import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.ChatEngine
 import dev.klaiber.cirrus.domain.ConversationTitler
 import dev.klaiber.cirrus.domain.SpeechController
+import dev.klaiber.cirrus.domain.SuggestionGenerator
 import dev.klaiber.cirrus.domain.agents.AgentRunner
 import dev.klaiber.cirrus.domain.agents.AgentScheduler
 import dev.klaiber.cirrus.domain.memory.ConsolidationScheduler
@@ -378,6 +379,14 @@ class AppContainer(
     val consolidationScheduler = ConsolidationScheduler(
         settings = settingsRepository,
         consolidator = memoryConsolidator,
+        scope = scope,
+    )
+
+    val suggestionGenerator = SuggestionGenerator(
+        engine = chatEngine,
+        settings = settingsRepository,
+        models = modelRepository,
+        json = wireJson,
         scope = scope,
     )
 
