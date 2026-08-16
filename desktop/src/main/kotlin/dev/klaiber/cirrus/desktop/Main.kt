@@ -1,6 +1,5 @@
 package dev.klaiber.cirrus.desktop
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -16,7 +15,6 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import dev.klaiber.cirrus.di.AppContainer
 import dev.klaiber.cirrus.domain.model.AppSettings
-import dev.klaiber.cirrus.domain.model.ThemeMode
 import dev.klaiber.cirrus.ui.ChatScreen
 import dev.klaiber.cirrus.ui.SettingsScreen
 import dev.klaiber.cirrus.ui.theme.CirrusTheme
@@ -64,7 +62,7 @@ private fun CirrusApp(container: AppContainer) {
     val settings by container.settingsRepository.settings.collectAsState(AppSettings())
     var showSettings by remember { mutableStateOf(false) }
 
-    CirrusTheme(darkTheme = settings.themeMode.isDark()) {
+    CirrusTheme(themeMode = settings.themeMode) {
         Surface(Modifier) {
             if (showSettings) {
                 SettingsScreen(container = container, onClose = { showSettings = false })
@@ -73,13 +71,6 @@ private fun CirrusApp(container: AppContainer) {
             }
         }
     }
-}
-
-@Composable
-private fun ThemeMode.isDark(): Boolean = when (this) {
-    ThemeMode.SYSTEM -> isSystemInDarkTheme()
-    ThemeMode.LIGHT -> false
-    ThemeMode.DARK -> true
 }
 
 /**

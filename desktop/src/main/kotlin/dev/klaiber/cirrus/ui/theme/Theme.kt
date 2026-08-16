@@ -2,50 +2,49 @@ package dev.klaiber.cirrus.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import dev.klaiber.cirrus.domain.model.ThemeMode
+
+/** Code token colours, provided here so any nesting depth can render highlighted code. */
+val LocalCodeColors = staticCompositionLocalOf { CodeColors.Light }
+
+/** Capability-badge colours, on the same footing and for the same reason. */
+val LocalTagColors = staticCompositionLocalOf { TagColors.Light }
 
 /**
- * The monochrome scheme the whole app shares with ollama.com.
+ * The app's one theme.
  *
- * Colour is a neutral ramp from white to black; `primary` is near-black rather than a hue, which
- * is what makes a filled button read as the reference design's black pill for free. There is no
- * dynamic colour: a scheme derived from the wallpaper would be precisely destructive of a design
- * that has committed to zero chroma.
+ * There is no dynamic-colour branch, and that is the design rather than an omission: a scheme
+ * derived from the desktop wallpaper is directly destructive of one that has committed to zero
+ * chroma, and removing the option removes the state in which a screenshot of Cirrus is
+ * unrecognisable as Cirrus.
+ *
+ * What remains configurable is light versus dark, which is a question about the room the machine
+ * is in rather than about the design. There is no window-insets branch here — that was Android's
+ * edge-to-edge drawing under the system bars, and a desktop window has none.
  */
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF111111),
-    onPrimary = Color.White,
-    background = Color.White,
-    onBackground = Color(0xFF111111),
-    surface = Color.White,
-    onSurface = Color(0xFF111111),
-    surfaceVariant = Color(0xFFF2F2F2),
-    onSurfaceVariant = Color(0xFF666666),
-    outline = Color(0xFFE0E0E0),
-)
-
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFFF5F5F5),
-    onPrimary = Color(0xFF111111),
-    background = Color(0xFF111111),
-    onBackground = Color(0xFFF5F5F5),
-    surface = Color(0xFF111111),
-    onSurface = Color(0xFFF5F5F5),
-    surfaceVariant = Color(0xFF1E1E1E),
-    onSurfaceVariant = Color(0xFF9A9A9A),
-    outline = Color(0xFF2A2A2A),
-)
-
 @Composable
 fun CirrusTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
-        content = content,
-    )
+    val darkTheme = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+
+    CompositionLocalProvider(
+        LocalCodeColors provides if (darkTheme) CodeColors.Dark else CodeColors.Light,
+        LocalTagColors provides if (darkTheme) TagColors.Dark else TagColors.Light,
+    ) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) DarkColors else LightColors,
+            typography = CirrusTypography,
+            shapes = CirrusShapes,
+            content = content,
+        )
+    }
 }
