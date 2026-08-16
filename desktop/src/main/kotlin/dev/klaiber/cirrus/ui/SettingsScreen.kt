@@ -42,6 +42,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.klaiber.cirrus.di.AppContainer
 import dev.klaiber.cirrus.domain.model.AppSettings
+import dev.klaiber.cirrus.domain.model.ElevenLabsModel
+import dev.klaiber.cirrus.domain.model.SpeechEngine
 import dev.klaiber.cirrus.domain.model.ThemeMode
 import dev.klaiber.cirrus.domain.userMessage
 import kotlinx.coroutines.launch
@@ -163,6 +165,10 @@ fun SettingsScreen(container: AppContainer, onClose: () -> Unit) {
                         onChange = { scope.launch { repository.setMaxToolIterations(it) } },
                     )
                 }
+            }
+
+            item {
+                SpeechSection(container = container, settings = settings)
             }
 
             item {
@@ -298,6 +304,76 @@ private fun ConnectionSection(container: AppContainer, settings: AppSettings) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * Which voice reads an answer back, and the key the good one needs.
+ *
+ * The system voice is offered first and selected by default because it always works without
+ * setting anything up — or rather, nearly always: unlike Android, a Linux desktop can genuinely
+ * have no engine installed, which is why the row says what it found rather than assuming.
+ */
+@Composable
+private fun SpeechSection(container: AppContainer, settings: AppSettings) {
+    val scope = rememberCoroutineScope()
+    val repository = container.settingsRepository
+
+    Section(SettingsSection.SPEECH) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Voice", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            SpeechEngine.entries.forEach { engine ->
+                val chosen = engine == settings.speechEngine
+                TextButton(onClick = { scope.launch { repository.setSpeechEngine(engine) } }) {
+                    Text(
+                        text = engine.label,
+                        fontWeight = if (chosen) FontWeight.Bold else FontWeight.Normal,
+                        color = if (chosen) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        Text(
+            text = settings.speechEngine.description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SecretRow(
+            title = "ElevenLabs API key",
+            summary = "Needed only for the ElevenLabs voice. Without one, Cirrus falls back to " +
+                "this computer's own engine rather than failing.",
+            isSet = settings.hasElevenLabsKey,
+            onSave = { scope.launch { repository.setElevenLabsKey(it) } },
+            onClear = { scope.launch { repository.clearElevenLabsKey() } },
+        )
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 16.dp)) {
+                Text("ElevenLabs model", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = ElevenLabsModel.fromId(settings.elevenLabsModelId).description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            var open by remember { mutableStateOf(false) }
+            Box {
+                TextButton(onClick = { open = true }) {
+                    Text(ElevenLabsModel.fromId(settings.elevenLabsModelId).label)
+                }
+                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    ElevenLabsModel.entries.forEach { model ->
+                        DropdownMenuItem(
+                            text = { Text(model.label) },
+                            onClick = {
+                                scope.launch { repository.setElevenLabsModel(model) }
+                                open = false
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }

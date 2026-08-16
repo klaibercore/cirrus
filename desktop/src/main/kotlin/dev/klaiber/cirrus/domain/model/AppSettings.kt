@@ -73,6 +73,12 @@ data class AppSettings(
     val hasSpotifyAccount: Boolean = false,
     val spotifyAccountName: String = "",
     val spotifyPremium: Boolean = false,
+    /** Who does the talking when an answer is read aloud. */
+    val speechEngine: SpeechEngine = SpeechEngine.DEVICE,
+    val hasElevenLabsKey: Boolean = false,
+    val elevenLabsVoiceId: String = "",
+    val elevenLabsVoiceName: String = "",
+    val elevenLabsModelId: String = ElevenLabsModel.Default.id,
     /** Offers the remember/recall/forget tools, and sends pinned memories with every turn. */
     val memoryEnabled: Boolean = true,
     /** Lets a model put something on the desktop notification tray. */

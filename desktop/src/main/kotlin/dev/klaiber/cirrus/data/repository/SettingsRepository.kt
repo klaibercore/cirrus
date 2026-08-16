@@ -2,9 +2,12 @@ package dev.klaiber.cirrus.data.repository
 
 import dev.klaiber.cirrus.data.remote.ApiCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
+import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsCredentials
 import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dev.klaiber.cirrus.domain.model.AppSettings
+import dev.klaiber.cirrus.domain.model.ElevenLabsModel
 import dev.klaiber.cirrus.domain.model.GenerationParams
+import dev.klaiber.cirrus.domain.model.SpeechEngine
 import dev.klaiber.cirrus.domain.model.ThemeMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +28,7 @@ class SettingsRepository(
     private val credentials: ApiCredentials,
     private val gitHubCredentials: GitHubCredentials,
     private val spotifyCredentials: SpotifyCredentials = SpotifyCredentials(),
+    private val elevenLabsCredentials: ElevenLabsCredentials = ElevenLabsCredentials(),
 ) {
 
     private val _settings = MutableStateFlow(AppSettings())
@@ -37,6 +41,7 @@ class SettingsRepository(
 
     private var apiKey: String? = null
     private var gitHubToken: String? = null
+    private var elevenLabsKey: String? = null
     private var spotifyAccessToken: String? = null
     private var spotifyRefreshToken: String? = null
     private var spotifyExpiresAt: Long = 0L
@@ -50,12 +55,14 @@ class SettingsRepository(
         val persisted = store.read(PersistedSettings.serializer()) { PersistedSettings() }
         apiKey = persisted.apiKey
         gitHubToken = persisted.gitHubToken
+        elevenLabsKey = persisted.elevenLabsKey
         spotifyAccessToken = persisted.spotifyAccessToken
         spotifyRefreshToken = persisted.spotifyRefreshToken
         spotifyExpiresAt = persisted.spotifyExpiresAt
         _settings.value = persisted.settings.copy(
             hasApiKey = apiKey != null,
             hasGitHubToken = gitHubToken != null,
+            hasElevenLabsKey = elevenLabsKey != null,
             hasSpotifyAccount = spotifyRefreshToken != null,
         )
         mirror()
@@ -64,6 +71,7 @@ class SettingsRepository(
     private fun mirror() {
         credentials.update(apiKey, _settings.value.baseUrl)
         gitHubCredentials.update(gitHubToken, _settings.value.writeToolsAllowed)
+        elevenLabsCredentials.update(elevenLabsKey)
         spotifyCredentials.update(
             clientId = _settings.value.spotifyClientId,
             accessToken = spotifyAccessToken,
@@ -85,6 +93,7 @@ class SettingsRepository(
             PersistedSettings(
                 apiKey = apiKey,
                 gitHubToken = gitHubToken,
+                elevenLabsKey = elevenLabsKey,
                 spotifyAccessToken = spotifyAccessToken,
                 spotifyRefreshToken = spotifyRefreshToken,
                 spotifyExpiresAt = spotifyExpiresAt,
@@ -161,6 +170,25 @@ class SettingsRepository(
 
     suspend fun setNotificationToolEnabled(enabled: Boolean) =
         update { it.copy(notificationToolEnabled = enabled) }
+
+    // ---- Read aloud ----------------------------------------------------------------------------
+
+    suspend fun setSpeechEngine(engine: SpeechEngine) = update { it.copy(speechEngine = engine) }
+
+    suspend fun setElevenLabsKey(rawKey: String) {
+        elevenLabsKey = rawKey.trim().takeIf { it.isNotEmpty() }
+        _settings.value = _settings.value.copy(hasElevenLabsKey = elevenLabsKey != null)
+        mirror()
+        persist()
+    }
+
+    suspend fun clearElevenLabsKey() = setElevenLabsKey("")
+
+    suspend fun setElevenLabsVoice(id: String, name: String) =
+        update { it.copy(elevenLabsVoiceId = id, elevenLabsVoiceName = name) }
+
+    suspend fun setElevenLabsModel(model: ElevenLabsModel) =
+        update { it.copy(elevenLabsModelId = model.id) }
 
     // ---- Spotify -------------------------------------------------------------------------------
 
@@ -244,6 +272,7 @@ class SettingsRepository(
 private data class PersistedSettings(
     val apiKey: String? = null,
     val gitHubToken: String? = null,
+    val elevenLabsKey: String? = null,
     val spotifyAccessToken: String? = null,
     val spotifyRefreshToken: String? = null,
     val spotifyExpiresAt: Long = 0L,

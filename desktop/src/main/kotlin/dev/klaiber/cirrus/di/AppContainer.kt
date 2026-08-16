@@ -6,6 +6,8 @@ import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.mcp.McpClient
 import dev.klaiber.cirrus.data.mcp.SseMcpTransport
 import dev.klaiber.cirrus.data.mcp.StreamableHttpMcpTransport
+import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsClient
+import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.remote.spotify.SpotifyAuth
@@ -19,6 +21,8 @@ import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.ChatEngine
 import dev.klaiber.cirrus.domain.ConversationTitler
+import dev.klaiber.cirrus.domain.SpeechController
+import dev.klaiber.cirrus.domain.SystemVoice
 import dev.klaiber.cirrus.domain.TurnController
 import dev.klaiber.cirrus.domain.notify.DesktopNotifier
 import dev.klaiber.cirrus.domain.spotify.SpotifyRedirectListener
@@ -102,6 +106,7 @@ class AppContainer(
     val apiCredentials = ApiCredentials()
     val gitHubCredentials = GitHubCredentials()
     val spotifyCredentials = SpotifyCredentials()
+    val elevenLabsCredentials = ElevenLabsCredentials()
 
     // ---- HTTP --------------------------------------------------------------------------------
 
@@ -193,6 +198,11 @@ class AppContainer(
 
     // ---- Repositories ------------------------------------------------------------------------
 
+    // ElevenLabs rides on the Spotify client: neither attaches a credential in an interceptor,
+    // both set their own header per call, and a second identical builder would only be a second
+    // place to get the timeouts wrong.
+    val elevenLabsClient = ElevenLabsClient(spotifyHttp, elevenLabsCredentials, wireJson)
+
     val spotifyClient = SpotifyClient(spotifyHttp, wireJson, spotifyCredentials)
     private val spotifyAuth = SpotifyAuth(spotifyHttp, spotifyCredentials, wireJson)
 
@@ -201,6 +211,7 @@ class AppContainer(
         credentials = apiCredentials,
         gitHubCredentials = gitHubCredentials,
         spotifyCredentials = spotifyCredentials,
+        elevenLabsCredentials = elevenLabsCredentials,
     )
 
     val spotifySession = SpotifySession(
@@ -313,6 +324,18 @@ class AppContainer(
         settings = settingsRepository,
         models = modelRepository,
         engine = chatEngine,
+        scope = scope,
+    )
+
+    /**
+     * Read-aloud, on the application scope for the reason turns are: audio outlives the screen
+     * that started it.
+     */
+    val speechController = SpeechController(
+        cacheDir = File(dataDir, "cache"),
+        elevenLabs = elevenLabsClient,
+        systemVoice = SystemVoice(),
+        settingsRepository = settingsRepository,
         scope = scope,
     )
 
