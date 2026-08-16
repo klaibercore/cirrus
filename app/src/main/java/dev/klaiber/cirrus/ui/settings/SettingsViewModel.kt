@@ -17,6 +17,7 @@ import dev.klaiber.cirrus.domain.model.AppSettings
 import dev.klaiber.cirrus.domain.model.GenerationParams
 import dev.klaiber.cirrus.domain.model.ElevenLabsModel
 import dev.klaiber.cirrus.domain.model.ModelInfo
+import dev.klaiber.cirrus.domain.model.ReadAloudStyle
 import dev.klaiber.cirrus.domain.model.SpeechEngine
 import dev.klaiber.cirrus.domain.model.ThemeMode
 import dev.klaiber.cirrus.domain.spotify.SpotifySession
@@ -305,6 +306,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setSpeechEngine(engine: SpeechEngine) {
         viewModelScope.launch { settingsRepository.setSpeechEngine(engine) }
+    }
+
+    fun setReadAloudStyle(style: ReadAloudStyle) {
+        viewModelScope.launch { settingsRepository.setReadAloudStyle(style) }
     }
 
     fun saveElevenLabsKey(key: String) {

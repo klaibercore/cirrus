@@ -63,6 +63,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsVoice
 import dev.klaiber.cirrus.domain.model.ElevenLabsModel
+import dev.klaiber.cirrus.domain.model.ReadAloudStyle
 import dev.klaiber.cirrus.domain.model.SpeechEngine
 import dev.klaiber.cirrus.domain.model.ThemeMode
 import androidx.compose.foundation.layout.ColumnScope
@@ -522,14 +523,19 @@ fun SettingsSectionScreen(
                 SwitchRow(
                     title = "Read answers aloud",
                     subtitle = "Show a speak button under finished replies",
-                    help = "Adds a control that reads a reply out. What gets spoken is not the raw " +
-                        "markdown: code blocks are announced rather than dictated, links are read as " +
-                        "\"link\", tables are read as heading-and-value pairs, and maths is spoken as " +
-                        "words — x squared, not x two.",
+                    help = "Adds a control that reads a reply out. What gets spoken is never the " +
+                        "raw markdown: code blocks are announced rather than dictated, links are " +
+                        "read as \"link\", tables are read as heading-and-value pairs, and maths is " +
+                        "spoken as words — x squared, not x two. By default a long answer is " +
+                        "summarised for the ear first; see \"What gets spoken\" below.",
                     checked = state.settings.readAloudEnabled,
                     onCheckedChange = viewModel::setReadAloudEnabled,
                 )
                 if (state.settings.readAloudEnabled) {
+                    ReadAloudStyleSelector(
+                        selected = state.settings.readAloudStyle,
+                        onSelect = viewModel::setReadAloudStyle,
+                    )
                     SpeechEngineSelector(
                         selected = state.settings.speechEngine,
                         onSelect = viewModel::setSpeechEngine,
@@ -775,6 +781,43 @@ private fun SectionHeader(text: String) {
  * discovers they can have a voice that does not sound like a satnav. Picking it reveals the key
  * field rather than nagging beforehand.
  */
+/**
+ * Whether the speak button reads the answer or tells you what it said.
+ *
+ * Above the engine picker, because it is the larger question: it decides what comes out of the
+ * speaker, where the engine only decides who says it.
+ */
+@Composable
+private fun ReadAloudStyleSelector(selected: ReadAloudStyle, onSelect: (ReadAloudStyle) -> Unit) {
+    Column(Modifier.padding(vertical = 8.dp)) {
+        LabelWithHelp(
+            label = "What gets spoken",
+            help = "A written answer is built for someone who can skim it — it restates the " +
+                "question, lays the options out as a list, and shows the code. A listener has to " +
+                "sit through all of that in order. So by default your model writes a spoken " +
+                "version first: a few paragraphs saying what the answer concluded and what to do " +
+                "about it. That costs one short request per reply you have read out. Choose the " +
+                "whole answer to hear every word instead, which costs nothing extra.",
+        )
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            ReadAloudStyle.entries.forEachIndexed { index, style ->
+                SegmentedButton(
+                    selected = style == selected,
+                    onClick = { onSelect(style) },
+                    shape = SegmentedButtonDefaults.itemShape(index, ReadAloudStyle.entries.size),
+                    label = { Text(style.label, style = MaterialTheme.typography.labelMedium) },
+                )
+            }
+        }
+        Text(
+            text = selected.description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
 @Composable
 private fun SpeechEngineSelector(selected: SpeechEngine, onSelect: (SpeechEngine) -> Unit) {
     Column(Modifier.padding(vertical = 8.dp)) {

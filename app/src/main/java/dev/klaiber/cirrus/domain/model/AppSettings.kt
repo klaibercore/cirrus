@@ -59,6 +59,8 @@ data class AppSettings(
     val preferOnDeviceRecognition: Boolean = true,
     /** Shows the read-aloud control on finished answers. */
     val readAloudEnabled: Boolean = true,
+    /** Whether that control speaks a summary of the answer or the whole of it. */
+    val readAloudStyle: ReadAloudStyle = ReadAloudStyle.SUMMARY,
     val speechEngine: SpeechEngine = SpeechEngine.DEVICE,
     val hasElevenLabsKey: Boolean = false,
     /** Blank until a voice is picked, at which point the client falls back to a sensible default. */

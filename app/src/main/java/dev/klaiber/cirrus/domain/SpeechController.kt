@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +39,10 @@ import kotlin.coroutines.resume
  * time — starting another stops the first, which is the only behaviour that makes sense when the
  * output is audio.
  *
+ * What gets spoken is not usually what is on the screen: [SpeechSummarizer] rewrites a long answer
+ * for the ear first, and that is a setting rather than a rule. Everything below it — chunking,
+ * synthesis, playback — works on whatever text comes back from it and does not care which it was.
+ *
  * Two engines sit behind the same call. The device engine is free, offline and always there;
  * ElevenLabs sounds enormously better and costs characters, so it is opt-in and needs a key. Long
  * answers are split into chunks either way — every hosted engine has a per-request character
@@ -49,6 +54,7 @@ class SpeechController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val elevenLabs: ElevenLabsClient,
     private val settingsRepository: SettingsRepository,
+    private val summarizer: SpeechSummarizer,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
 
@@ -95,12 +101,18 @@ class SpeechController @Inject constructor(
         job = scope.launch {
             val settings = settingsRepository.current.value
             try {
+                // Writing the spoken version is part of preparing the audio, so it happens under
+                // the same job and the same "preparing" flag: pressing stop while the summary is
+                // being written cancels it, exactly as pressing stop during synthesis does.
+                val script = summarizer.prepare(spoken)
+                ensureActive()
+
                 val useHosted = settings.speechEngine == SpeechEngine.ELEVENLABS &&
                     settings.hasElevenLabsKey
                 if (useHosted) {
-                    speakWithElevenLabs(spoken, settings.elevenLabsVoiceId, settings.elevenLabsModelId)
+                    speakWithElevenLabs(script, settings.elevenLabsVoiceId, settings.elevenLabsModelId)
                 } else {
-                    speakWithDevice(spoken)
+                    speakWithDevice(script)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled

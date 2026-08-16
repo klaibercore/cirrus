@@ -13,6 +13,25 @@ enum class SpeechEngine(val label: String, val description: String) {
 }
 
 /**
+ * What gets said when an answer is read aloud.
+ *
+ * [SUMMARY] is the default because a written answer and a spoken one are different documents. See
+ * [dev.klaiber.cirrus.domain.SpeechSummarizer] for the argument; the short version is that a
+ * listener cannot skim, so the parts of an answer written to be skimmed — the restatement of the
+ * question, the option list, the code — cost them minutes rather than seconds.
+ */
+enum class ReadAloudStyle(val label: String, val description: String) {
+    SUMMARY(
+        label = "Spoken summary",
+        description = "A few paragraphs written for the ear: what it concluded and what to do.",
+    ),
+    VERBATIM(
+        label = "The whole answer",
+        description = "Every word on screen, in order. Code blocks are announced, not dictated.",
+    ),
+}
+
+/**
  * The ElevenLabs models worth offering.
  *
  * Flash is the default because read-aloud is an interaction, not a render: the wait before audio

@@ -16,6 +16,7 @@ import dev.klaiber.cirrus.di.ApplicationScope
 import dev.klaiber.cirrus.domain.model.AppSettings
 import dev.klaiber.cirrus.domain.model.ElevenLabsModel
 import dev.klaiber.cirrus.domain.model.GenerationParams
+import dev.klaiber.cirrus.domain.model.ReadAloudStyle
 import dev.klaiber.cirrus.domain.model.SpeechEngine
 import dev.klaiber.cirrus.domain.model.ThemeMode
 import kotlinx.coroutines.CoroutineScope
@@ -167,6 +168,10 @@ class SettingsRepository @Inject constructor(
     suspend fun setReadAloudEnabled(enabled: Boolean) = edit { it[Keys.READ_ALOUD] = enabled }
 
     suspend fun setSpeechEngine(engine: SpeechEngine) = edit { it[Keys.SPEECH_ENGINE] = engine.name }
+
+    suspend fun setReadAloudStyle(style: ReadAloudStyle) = edit {
+        it[Keys.READ_ALOUD_STYLE] = style.name
+    }
 
     /** Stored with the same Keystore-backed envelope encryption as every other secret here. */
     suspend fun setElevenLabsKey(rawKey: String) {
@@ -331,6 +336,9 @@ class SettingsRepository @Inject constructor(
         voiceInputEnabled = this[Keys.VOICE_INPUT] ?: true,
         preferOnDeviceRecognition = this[Keys.ON_DEVICE_RECOGNITION] ?: true,
         readAloudEnabled = this[Keys.READ_ALOUD] ?: true,
+        readAloudStyle = this[Keys.READ_ALOUD_STYLE]
+            ?.let { name -> runCatching { ReadAloudStyle.valueOf(name) }.getOrNull() }
+            ?: ReadAloudStyle.SUMMARY,
         speechEngine = this[Keys.SPEECH_ENGINE]
             ?.let { name -> runCatching { SpeechEngine.valueOf(name) }.getOrNull() }
             ?: SpeechEngine.DEVICE,
@@ -391,6 +399,7 @@ class SettingsRepository @Inject constructor(
         val VOICE_INPUT = booleanPreferencesKey("voice_input")
         val ON_DEVICE_RECOGNITION = booleanPreferencesKey("on_device_recognition")
         val READ_ALOUD = booleanPreferencesKey("read_aloud")
+        val READ_ALOUD_STYLE = stringPreferencesKey("read_aloud_style")
         val SPEECH_ENGINE = stringPreferencesKey("speech_engine")
         val ELEVENLABS_KEY = stringPreferencesKey("elevenlabs_key_encrypted")
         val ELEVENLABS_VOICE = stringPreferencesKey("elevenlabs_voice")
