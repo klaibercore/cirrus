@@ -27,6 +27,7 @@ import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.time.temporal.WeekFields
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 /**
  * What time it is, answered properly.
@@ -188,7 +189,8 @@ class CalendarTool : CirrusTool {
  * The computer, described in one shot.
  *
  * The equivalent of running `fastfetch`, except that every line comes from a platform API rather
- * than from parsing somebody's output. The `shell` block is the part that earns its place: it says
+ * than from parsing somebody's output — the single exception is machine uptime on macOS, which the
+ * JVM does not expose at all. The `shell` block is the part that earns its place: it says
  * which of the allowed programs are genuinely present on *this* machine, so the model can find out
  * rather than discovering it one failed command at a time.
  */
@@ -217,7 +219,7 @@ class SystemInfoTool(
                 put("os", "${os.name} ${os.version}")
                 put("arch", os.arch)
                 put("hostname", runCatching { java.net.InetAddress.getLocalHost().hostName }.getOrNull() ?: "unknown")
-                put("uptime", humanDuration(os.uptime))
+                machineUptimeMillis()?.let { put("uptime", humanDuration(it)) }
             }
             putJsonObject("cpu") {
                 put("cores", Runtime.getRuntime().availableProcessors())
@@ -239,6 +241,7 @@ class SystemInfoTool(
             }
             putJsonObject("cirrus") {
                 put("version", CIRRUS_VERSION)
+                put("running_for", humanDuration(ManagementFactory.getRuntimeMXBean().uptime))
                 put("workspace", workspace.path)
                 put("workspace_files", workspace.entries().count { !it.isDirectory })
                 put("workspace_bytes", workspace.usedBytes())
@@ -286,6 +289,44 @@ class SystemInfoTool(
         return up.joinToString(",") { it.name }
     }
 
+    /**
+     * How long the machine has been up, or null where that cannot be known.
+     *
+     * The JVM has no portable answer — `RuntimeMXBean.uptime` is the JVM's own age, which is a
+     * different number and would be a wrong one under this name. Linux keeps it in a file; macOS
+     * keeps the boot instant in a sysctl, which is the one place in this tool a subprocess is
+     * worth it. Boot time never changes, so it is read once and the uptime derived from it after.
+     */
+    private fun machineUptimeMillis(): Long? {
+        val bootMillis = bootTimeMillis ?: readBootTimeMillis()?.also { bootTimeMillis = it }
+        return bootMillis?.let { System.currentTimeMillis() - it }
+    }
+
+    private fun readBootTimeMillis(): Long? {
+        val osName = System.getProperty("os.name").orEmpty().lowercase(Locale.ENGLISH)
+        return when {
+            osName.contains("linux") -> runCatching {
+                val seconds = File("/proc/uptime").readText().substringBefore(' ').toDouble()
+                System.currentTimeMillis() - (seconds * 1000).toLong()
+            }.getOrNull()
+
+            osName.contains("mac") -> runCatching {
+                val process = ProcessBuilder("/usr/sbin/sysctl", "-n", "kern.boottime")
+                    .redirectErrorStream(true)
+                    .start()
+                val output = process.inputStream.bufferedReader().use { it.readText() }
+                if (!process.waitFor(2, TimeUnit.SECONDS)) {
+                    process.destroyForcibly()
+                    return@runCatching null
+                }
+                // { sec = 1755300000, usec = 0 } Sat Aug 16 09:00:00 2025
+                SEC_FIELD.find(output)?.groupValues?.get(1)?.toLong()?.times(1000)
+            }.getOrNull()
+
+            else -> null
+        }
+    }
+
     private fun humanBytes(bytes: Long): String = when {
         bytes >= 1L shl 30 -> String.format(Locale.ENGLISH, "%.1f GB", bytes / (1L shl 30).toDouble())
         bytes >= 1L shl 20 -> String.format(Locale.ENGLISH, "%.0f MB", bytes / (1L shl 20).toDouble())
@@ -306,5 +347,10 @@ class SystemInfoTool(
     private companion object {
         const val CIRRUS_VERSION = "1.0.0-desktop"
         val PATH_DIRS = listOf("/usr/local/bin", "/usr/bin", "/bin", "/usr/local/sbin", "/usr/sbin", "/sbin")
+        val SEC_FIELD = Regex("""sec\s*=\s*(\d+)""")
+
+        /** Read once: the machine did not boot again while Cirrus was running. */
+        @Volatile
+        var bootTimeMillis: Long? = null
     }
 }
