@@ -13,6 +13,7 @@ import dev.klaiber.cirrus.data.repository.MemoryRepository
 import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.ModelRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
+import dev.klaiber.cirrus.data.repository.SkillRepository
 import dev.klaiber.cirrus.domain.model.AppSettings
 import dev.klaiber.cirrus.domain.model.GenerationParams
 import dev.klaiber.cirrus.domain.model.ElevenLabsModel
@@ -56,6 +57,7 @@ data class SettingsUiState(
     val mcpToolCount: Int = 0,
     val memoryCount: Int = 0,
     val agentCount: Int = 0,
+    val skillCount: Int = 0,
 )
 
 @HiltViewModel
@@ -67,6 +69,7 @@ class SettingsViewModel @Inject constructor(
     mcpServerRepository: McpServerRepository,
     memoryRepository: MemoryRepository,
     agentRepository: AgentRepository,
+    skillRepository: SkillRepository,
     private val client: OllamaClient,
     private val elevenLabs: ElevenLabsClient,
 ) : ViewModel() {
@@ -86,8 +89,9 @@ class SettingsViewModel @Inject constructor(
         mcpServerRepository.bindings,
         memoryRepository.activeCount,
         agentRepository.agents,
-    ) { servers, bindings, memories, agents ->
-        Counts(servers.size, bindings.size, memories, agents.size)
+        skillRepository.skills,
+    ) { servers, bindings, memories, agents, skills ->
+        Counts(servers.size, bindings.size, memories, agents.size, skills.size)
     }
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -104,6 +108,7 @@ class SettingsViewModel @Inject constructor(
             mcpToolCount = counts.mcpTools,
             memoryCount = counts.memories,
             agentCount = counts.agents,
+            skillCount = counts.skills,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -112,6 +117,7 @@ class SettingsViewModel @Inject constructor(
         val mcpTools: Int,
         val memories: Int,
         val agents: Int,
+        val skills: Int,
     )
 
     init {

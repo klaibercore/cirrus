@@ -325,6 +325,7 @@ fun SettingsSectionScreen(
     section: SettingsSection,
     onBack: () -> Unit,
     onOpenMcpServers: () -> Unit,
+    onOpenSkills: () -> Unit = {},
     /** Asks Android for the location permission, then reports what it said. */
     onLocationToggle: (Boolean) -> Unit = {},
     onSpotifyConnect: () -> Unit = {},
@@ -668,6 +669,17 @@ fun SettingsSectionScreen(
                     checked = state.settings.memoryConsolidationEnabled,
                     onCheckedChange = viewModel::setMemoryConsolidationEnabled,
                     enabled = state.settings.memoryEnabled,
+                )
+                NavigationRow(
+                    title = "Skills",
+                    subtitle = skillsSubtitle(state.settings.skillsEnabled, state.skillCount),
+                    help = "A skill is a page of instructions for one kind of work, installed " +
+                        "from a public GitHub repository — the same SKILL.md files npx skills " +
+                        "installs for Claude Code and the rest, so anything written for those " +
+                        "works here unchanged. Every installed skill's name and description sit " +
+                        "in the system message; the model reads the full page only when one " +
+                        "applies, which is what keeps a shelf of them affordable.",
+                    onClick = onOpenSkills,
                 )
                 SwitchRow(
                     title = "Notifications",
@@ -1432,6 +1444,13 @@ private fun NavigationRow(
 }
 
 /** Says what attaching servers has actually bought you, which is a tool count, not a server count. */
+private fun skillsSubtitle(enabled: Boolean, count: Int): String = when {
+    count == 0 -> "None installed"
+    !enabled -> "$count installed · not offered to the model"
+    count == 1 -> "1 skill offered to the model"
+    else -> "$count skills offered to the model"
+}
+
 private fun mcpSubtitle(serverCount: Int, toolCount: Int): String = when {
     serverCount == 0 -> "None attached"
     toolCount == 0 -> "$serverCount attached · no tools available"

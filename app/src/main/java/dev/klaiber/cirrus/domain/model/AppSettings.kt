@@ -119,6 +119,14 @@ data class AppSettings(
     val spotifyPremium: Boolean = false,
     /** Offers the remember/recall/forget tools, and sends pinned memories with every turn. */
     val memoryEnabled: Boolean = true,
+    /**
+     * Offers the installed skills: their roster in the system message, and use_skill to open one.
+     *
+     * On by default, and that costs nothing until a skill is installed — the roster is omitted when
+     * there is nothing in it. Like memory, it is not behind the conversation's tools switch: a
+     * skill is a document already on the phone, and loading one reaches no further than the disk.
+     */
+    val skillsEnabled: Boolean = true,
     /** Lets a model put something on the notification shade. */
     val notificationToolEnabled: Boolean = true,
     /** Runs the nightly pass that merges duplicate memories and retires stale ones. */

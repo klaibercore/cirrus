@@ -11,6 +11,8 @@ import dev.klaiber.cirrus.data.mcp.SseMcpTransport
 import dev.klaiber.cirrus.data.mcp.StreamableHttpMcpTransport
 import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
+import dev.klaiber.cirrus.data.repository.SkillRepository
+import dev.klaiber.cirrus.data.skills.SkillRegistry
 import dev.klaiber.cirrus.domain.model.AppSettings
 import dev.klaiber.cirrus.domain.model.ChatMessage
 import dev.klaiber.cirrus.domain.model.Conversation
@@ -24,7 +26,10 @@ import dev.klaiber.cirrus.domain.tools.ForgetTool
 import dev.klaiber.cirrus.domain.tools.MemoryToolSet
 import dev.klaiber.cirrus.domain.tools.RecallTool
 import dev.klaiber.cirrus.domain.tools.RememberTool
+import dev.klaiber.cirrus.domain.tools.ListSkillsTool
 import dev.klaiber.cirrus.domain.tools.SendNotificationTool
+import dev.klaiber.cirrus.domain.tools.SkillToolSet
+import dev.klaiber.cirrus.domain.tools.UseSkillTool
 import dev.klaiber.cirrus.domain.tools.DescribeSettingsTool
 import dev.klaiber.cirrus.domain.tools.DeviceToolSet
 import dev.klaiber.cirrus.domain.tools.SpotifyToolSet
@@ -95,6 +100,12 @@ class ChatEngineTest {
         }
         val gitHubCredentials = GitHubCredentials()
         val memoryRepository = MemoryRepository(EmptyMemoryDao())
+        val skillRepository = SkillRepository(
+            dataStore = dataStore,
+            registry = SkillRegistry(OkHttpClient(), json),
+            json = json,
+            scope = scope,
+        )
         val settingsRepository = SettingsRepository(
             dataStore = dataStore,
             secretCipher = SecretCipher(),
@@ -147,6 +158,12 @@ class ChatEngineTest {
                 ForgetTool(memoryRepository),
             ),
             notificationTool = SendNotificationTool(RecordingNotifier()),
+            // Nothing is installed, so the skills group contributes no definitions and no brief.
+            skillTools = SkillToolSet(
+                UseSkillTool(skillRepository),
+                ListSkillsTool(skillRepository),
+            ),
+            skills = skillRepository,
             // The device and Spotify tools need a Context and an account, so none is offered here.
             // The turn protocol does not care which tools exist, only that the loop services
             // whatever the model asks for.

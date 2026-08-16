@@ -7,7 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Skills.** A skill is a page of instructions for one kind of work — writing a particular sort of
+  document, reviewing an interface, following a house style. Cirrus installs them from public
+  GitHub repositories: the same `SKILL.md` files `npx skills add` installs for Claude Code, Codex
+  and Cursor, so anything written for those works here unchanged. There is no npm package to run
+  and there could not be — Android has refused since API 29 to execute a binary an app downloaded
+  — so three HTTP requests do the job the CLI does with a clone. Settings → Tools → Skills takes
+  `owner/repo`, a pasted address, or a path to one skill inside a large library, and offers a short
+  catalogue of well-known ones.
+- Every enabled skill's name and description sit in the system message; the model reads the full
+  page only when one applies, by calling `use_skill`. That split is what makes a shelf of them
+  affordable — a description costs a line per turn, and a skill body runs to thousands of words.
+
+### Changed
+
+- **Read-aloud speaks a summary rather than the whole answer.** A written answer is built for
+  someone who can skim it — it restates the question, lays the options out as a list, shows the
+  code — and a listener sits through all of that in order, unable to look ahead. Your own model now
+  writes a spoken version first: a few paragraphs of what the answer concluded and what to do about
+  it. Short answers are still read as written, and Voice settings has the switch back to verbatim.
+
+### Fixed
+
+- **The transcript no longer jumps while an answer streams.** Following the tail walked to the
+  bottom in viewport-sized steps on every token, because `scrollToItem` aligns an item's *top* with
+  the top of the screen and every answer worth reading is longer than that. A zero-height anchor
+  row now closes the list, so one scroll lands exactly at the end of the content — which is also
+  what fixes "Jump to latest" landing on the first line of a reply.
+- **A collapsed reasoning trace or tool group stays collapsed.** Both closed themselves with a
+  `remember` key that moved in both directions, so a turn that thought, answered, called a tool and
+  thought again reopened the panel the reader had just watched close — pushing the sentence they
+  were reading down the screen. Closing is now one-way, and a tap outranks it permanently.
+- The transcript re-pins itself to the bottom when the keyboard or a banner resizes the viewport.
+  A lazy list holds its *top* item still when that happens, which quietly unpinned a reader who was
+  sitting at the end.
 
 ## [1.6.0] - 2026-08-15
 

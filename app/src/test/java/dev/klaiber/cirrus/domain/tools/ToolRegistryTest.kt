@@ -14,6 +14,8 @@ import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.MemoryRepository
 import dev.klaiber.cirrus.data.repository.SettingsRepository
+import dev.klaiber.cirrus.data.repository.SkillRepository
+import dev.klaiber.cirrus.data.skills.SkillRegistry
 import dev.klaiber.cirrus.domain.notify.Notifier
 import dev.klaiber.cirrus.domain.tools.github.CommentTool
 import dev.klaiber.cirrus.domain.tools.github.CreateIssueTool
@@ -96,6 +98,12 @@ class ToolRegistryTest {
         val gitHub = GitHubClient(http, json, gitHubCredentials)
         val mcp = McpClient(StreamableHttpMcpTransport(http), SseMcpTransport(http, json), json)
         val memories = MemoryRepository(InMemoryMemoryDao())
+        val skills = SkillRepository(
+            dataStore = dataStore,
+            registry = SkillRegistry(http, json),
+            json = json,
+            scope = scope,
+        )
 
         registry = ToolRegistry(
             webSearchTool = WebSearchTool(ollama, settings),
@@ -130,6 +138,8 @@ class ToolRegistryTest {
                 ForgetTool(memories),
             ),
             notificationTool = SendNotificationTool(SilentNotifier()),
+            skillTools = SkillToolSet(UseSkillTool(skills), ListSkillsTool(skills)),
+            skills = skills,
             // Stand-ins: the real device tools need a Context, and what is under test here is the
             // gate rather than what is behind it. Two entries, because the two lists answer to two
             // different switches and both halves of each gate have to be exercised.
@@ -181,6 +191,29 @@ class ToolRegistryTest {
 
         assertFalse(offeredNames(externalTools = true).contains("remember"))
         assertNull(registry.find("remember", externalTools = true))
+    }
+
+    /**
+     * Skills sit outside the external switch for the same reason memory does: a skill is a file
+     * Cirrus already holds, and opening one reaches no further than the disk.
+     */
+    @Test
+    fun `skill tools are offered even with external tools off`() = runBlocking {
+        assertTrue(offeredNames(externalTools = false).contains("use_skill"))
+        assertNotNull(registry.find("use_skill", externalTools = false))
+    }
+
+    @Test
+    fun `skill tools disappear entirely when skills are switched off`() = runBlocking {
+        settings.setSkillsEnabled(false)
+        await("skills off") { !settings.current.value.skillsEnabled }
+
+        assertFalse(offeredNames(externalTools = true).contains("use_skill"))
+        assertNull(registry.find("use_skill", externalTools = true))
+        assertTrue(
+            "the refusal has to name the switch rather than claim the tool does not exist",
+            registry.explainRefusal("use_skill").contains("Settings → Tools → Skills"),
+        )
     }
 
     @Test

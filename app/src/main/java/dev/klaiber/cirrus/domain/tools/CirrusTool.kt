@@ -4,8 +4,10 @@ import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dev.klaiber.cirrus.data.repository.SettingsRepository
+import dev.klaiber.cirrus.data.repository.SkillRepository
 import dev.klaiber.cirrus.domain.model.AppSettings
 import dev.klaiber.cirrus.domain.settings.SettingSwitch
+import dev.klaiber.cirrus.domain.skills.skillsBrief
 import dev.klaiber.cirrus.domain.tools.github.CommentTool
 import dev.klaiber.cirrus.domain.tools.github.CreateIssueTool
 import dev.klaiber.cirrus.domain.tools.github.GetIssueTool
@@ -189,6 +191,8 @@ class ToolRegistry @Inject constructor(
     private val gitHubTools: GitHubToolSet,
     private val memoryTools: MemoryToolSet,
     private val notificationTool: SendNotificationTool,
+    private val skillTools: SkillToolSet,
+    private val skills: SkillRepository,
     private val deviceTools: DeviceToolSet,
     private val spotifyTools: SpotifyToolSet,
     private val settingsTool: DescribeSettingsTool,
@@ -231,6 +235,10 @@ class ToolRegistry @Inject constructor(
         // no way to correct it is worse than not remembering at all.
         Group(memoryTools.all, SettingSwitch.MEMORY, external = false),
         Group(listOf(notificationTool), SettingSwitch.NOTIFICATIONS, external = false),
+        // Local, like memory: a skill is a document already on the phone, and loading one costs a
+        // file read. Putting it behind the conversation's tools switch — which exists to control
+        // what leaves the device — would mean skills silently doing nothing in most conversations.
+        Group(skillTools.all, SettingSwitch.SKILLS, external = false),
         // The shell, the clock and the calendar are on the same footing as memory: local, instant,
         // and nothing leaves the phone. A model that cannot ask what today's date is answers every
         // scheduling question from the year it was trained in, which is wrong in the way that looks
@@ -362,6 +370,12 @@ class ToolRegistry @Inject constructor(
      */
     fun standingBrief(): String? {
         val settings = settingsRepository.current.value
+        return listOfNotNull(shellBrief(settings), skillRoster(settings))
+            .joinToString("\n\n")
+            .takeIf { it.isNotBlank() }
+    }
+
+    private fun shellBrief(settings: AppSettings): String? {
         // The emptiness check is not belt-and-braces: it is what stops the brief describing a shell
         // to a build that has none.
         if (!settings.shellToolsEnabled || deviceTools.shell.isEmpty()) return null
@@ -374,6 +388,18 @@ class ToolRegistry @Inject constructor(
             "you have written anything. Use get_datetime rather than assuming today's date."
     }
 
+    /**
+     * The installed skills, by name and one line each.
+     *
+     * This has to be in the system message rather than in a tool description, and the difference is
+     * the whole reason skills work at all: a tool description is read when the model has already
+     * decided it wants a tool, while "there is a skill for writing these" has to arrive while it is
+     * still deciding how to approach the question.
+     */
+    private fun skillRoster(settings: AppSettings): String? {
+        if (!SettingSwitch.SKILLS.isOn(settings)) return null
+        return skillsBrief(skills.enabled)
+    }
 }
 
 /**

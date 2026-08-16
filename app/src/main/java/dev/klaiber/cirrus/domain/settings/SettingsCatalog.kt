@@ -40,6 +40,14 @@ enum class SettingSwitch(
         summary = "Remembering things about the user between conversations, and recalling them.",
         reader = AppSettings::memoryEnabled,
     ),
+    SKILLS(
+        id = "skills",
+        title = "Skills",
+        path = "Settings → Tools → Skills",
+        summary = "Pages of instructions for particular kinds of work, installed from public " +
+            "repositories, that the model can load when one applies.",
+        reader = AppSettings::skillsEnabled,
+    ),
     NOTIFICATIONS(
         id = "notifications",
         title = "Notifications",

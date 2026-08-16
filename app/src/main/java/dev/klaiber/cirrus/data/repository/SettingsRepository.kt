@@ -285,6 +285,8 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setMemoryEnabled(enabled: Boolean) = edit { it[Keys.MEMORY_ENABLED] = enabled }
 
+    suspend fun setSkillsEnabled(enabled: Boolean) = edit { it[Keys.SKILLS_ENABLED] = enabled }
+
     suspend fun setNotificationToolEnabled(enabled: Boolean) = edit {
         it[Keys.NOTIFICATION_TOOL] = enabled
     }
@@ -356,6 +358,7 @@ class SettingsRepository @Inject constructor(
         spotifyAccountName = this[Keys.SPOTIFY_ACCOUNT].orEmpty(),
         spotifyPremium = this[Keys.SPOTIFY_PREMIUM] ?: false,
         memoryEnabled = this[Keys.MEMORY_ENABLED] ?: true,
+        skillsEnabled = this[Keys.SKILLS_ENABLED] ?: true,
         notificationToolEnabled = this[Keys.NOTIFICATION_TOOL] ?: true,
         memoryConsolidationEnabled = this[Keys.CONSOLIDATION_ENABLED] ?: true,
         memoryConsolidationHour = this[Keys.CONSOLIDATION_HOUR] ?: 3,
@@ -420,6 +423,7 @@ class SettingsRepository @Inject constructor(
         val SPOTIFY_STATE = stringPreferencesKey("spotify_pkce_state")
         val APP_CONTROL = booleanPreferencesKey("app_control")
         val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
+        val SKILLS_ENABLED = booleanPreferencesKey("skills_enabled")
         val NOTIFICATION_TOOL = booleanPreferencesKey("notification_tool")
         val CONSOLIDATION_ENABLED = booleanPreferencesKey("consolidation_enabled")
         val CONSOLIDATION_HOUR = intPreferencesKey("consolidation_hour")

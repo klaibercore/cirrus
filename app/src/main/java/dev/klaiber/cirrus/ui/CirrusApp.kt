@@ -32,6 +32,7 @@ import dev.klaiber.cirrus.ui.settings.SettingsSection
 import dev.klaiber.cirrus.ui.settings.SettingsSectionScreen
 import dev.klaiber.cirrus.ui.settings.SettingsViewModel
 import dev.klaiber.cirrus.ui.settings.mcp.McpServersScreen
+import dev.klaiber.cirrus.ui.settings.skills.SkillsScreen
 import kotlinx.coroutines.launch
 
 /** Content handed over from another app through a share intent. */
@@ -50,6 +51,7 @@ private object Routes {
     const val SECTION_ARG = "section"
     const val SETTINGS_SECTION = "settings/section/{$SECTION_ARG}"
     const val MCP_SERVERS = "settings/mcp"
+    const val SKILLS = "settings/skills"
     const val MEMORY = "memory"
     const val AGENTS = "agents"
     const val SETUP = "setup"
@@ -163,6 +165,7 @@ fun CirrusApp(
                     ),
                     onBack = { navController.popBackStack() },
                     onOpenMcpServers = { navController.navigate(Routes.MCP_SERVERS) },
+                    onOpenSkills = { navController.navigate(Routes.SKILLS) },
                     onLocationToggle = { wanted ->
                         if (wanted) {
                             // Asking is the switch. Android shows nothing if the permission is
@@ -200,6 +203,10 @@ fun CirrusApp(
 
             composable(Routes.MCP_SERVERS) {
                 McpServersScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.SKILLS) {
+                SkillsScreen(onBack = { navController.popBackStack() })
             }
         }
     }
