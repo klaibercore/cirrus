@@ -13,6 +13,7 @@ import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.remote.spotify.SpotifyAuth
 import dev.klaiber.cirrus.data.remote.spotify.SpotifyClient
 import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
+import dev.klaiber.cirrus.data.repository.AgentRepository
 import dev.klaiber.cirrus.data.repository.ConversationRepository
 import dev.klaiber.cirrus.data.repository.JsonStore
 import dev.klaiber.cirrus.data.repository.McpServerRepository
@@ -22,6 +23,10 @@ import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.ChatEngine
 import dev.klaiber.cirrus.domain.ConversationTitler
 import dev.klaiber.cirrus.domain.SpeechController
+import dev.klaiber.cirrus.domain.agents.AgentRunner
+import dev.klaiber.cirrus.domain.agents.AgentScheduler
+import dev.klaiber.cirrus.domain.memory.ConsolidationScheduler
+import dev.klaiber.cirrus.domain.memory.MemoryConsolidator
 import dev.klaiber.cirrus.domain.SystemVoice
 import dev.klaiber.cirrus.domain.TurnController
 import dev.klaiber.cirrus.domain.notify.DesktopNotifier
@@ -237,6 +242,11 @@ class AppContainer(
         scope = scope,
     )
 
+    val agentRepository = AgentRepository(
+        store = JsonStore(File(dataDir, "agents.json"), persistenceJson),
+        conversations = conversationRepository,
+    )
+
     val modelRepository = ModelRepository(ollamaClient, capabilityDetector, scope)
 
     // ---- Tools -------------------------------------------------------------------------------
@@ -339,6 +349,38 @@ class AppContainer(
         scope = scope,
     )
 
+    private val agentRunner = AgentRunner(
+        agents = agentRepository,
+        conversations = conversationRepository,
+        models = modelRepository,
+        settings = settingsRepository,
+        memories = memoryRepository,
+        engine = chatEngine,
+        notifier = notifier,
+        notificationTool = notificationTool,
+    )
+
+    val agentScheduler = AgentScheduler(
+        agents = agentRepository,
+        runner = agentRunner,
+        scope = scope,
+    )
+
+    private val memoryConsolidator = MemoryConsolidator(
+        client = ollamaClient,
+        memories = memoryRepository,
+        conversations = conversationRepository,
+        models = modelRepository,
+        settings = settingsRepository,
+        json = wireJson,
+    )
+
+    val consolidationScheduler = ConsolidationScheduler(
+        settings = settingsRepository,
+        consolidator = memoryConsolidator,
+        scope = scope,
+    )
+
     val turnController = TurnController(
         conversations = conversationRepository,
         settings = settingsRepository,
@@ -354,6 +396,9 @@ class AppContainer(
         conversationRepository.load()
         memoryRepository.load()
         mcpServerRepository.load()
+        agentRepository.load()
+        agentScheduler.syncAll()
+        consolidationScheduler.sync()
         shellWorkspace.clear()
     }
 }

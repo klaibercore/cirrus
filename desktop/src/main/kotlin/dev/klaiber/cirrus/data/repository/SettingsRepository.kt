@@ -171,6 +171,14 @@ class SettingsRepository(
     suspend fun setNotificationToolEnabled(enabled: Boolean) =
         update { it.copy(notificationToolEnabled = enabled) }
 
+    suspend fun setMemoryConsolidationEnabled(enabled: Boolean) =
+        update { it.copy(memoryConsolidationEnabled = enabled) }
+
+    suspend fun setMemoryConsolidationHour(hour: Int) =
+        update { it.copy(memoryConsolidationHour = hour.coerceIn(0, 23)) }
+
+    suspend fun setLastConsolidationAt(at: Long) = update { it.copy(lastConsolidationAt = at) }
+
     // ---- Read aloud ----------------------------------------------------------------------------
 
     suspend fun setSpeechEngine(engine: SpeechEngine) = update { it.copy(speechEngine = engine) }

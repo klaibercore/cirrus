@@ -81,6 +81,23 @@ class ConversationRepository(
         return conversation
     }
 
+    /**
+     * Threads touched since [since], newest first — what the nightly memory pass reads.
+     *
+     * Agent runs are excluded on purpose. Memory is meant to be what the *user* said, and a
+     * scheduled prompt that runs daily would otherwise be harvested as a durable fact about them
+     * every single night, drowning the store in restatements of the agent's own instructions.
+     */
+    suspend fun recentlyUpdated(since: Long, limit: Int): List<Conversation> =
+        _state.value.conversations
+            .filter { it.updatedAt > since && !it.archived && it.agentId == null }
+            .sortedByDescending { it.updatedAt }
+            .take(limit)
+
+    /** Threads this agent wrote that nobody has replied to — replying clears [Conversation.agentId]. */
+    suspend fun conversationsForAgent(agentId: String): List<Conversation> =
+        _state.value.conversations.filter { it.agentId == agentId }
+
     suspend fun deleteConversations(ids: List<String>) {
         if (ids.isEmpty()) return
         mutate { state ->
@@ -314,9 +331,16 @@ private data class ConversationStore(
     fun messagesFor(conversationId: String): List<ChatMessage> =
         messages.filter { it.conversationId == conversationId }.sortedBy { it.sequence }
 
+    /**
+     * The drawer's list — ordinary conversations only.
+     *
+     * An agent run is a real conversation, which is what makes every transcript feature work on it
+     * for free, but a daily agent contributes a thread a day to this list and after a fortnight the
+     * list is mostly machine. Runs are not hidden; they live on the agent that wrote them.
+     */
     fun summaries(archived: Boolean): List<ConversationSummary> =
         conversations
-            .filter { it.archived == archived }
+            .filter { it.archived == archived && it.agentId == null }
             .sortedByDescending { it.updatedAt }
             .map { conversation ->
                 val thread = messagesFor(conversation.id)
