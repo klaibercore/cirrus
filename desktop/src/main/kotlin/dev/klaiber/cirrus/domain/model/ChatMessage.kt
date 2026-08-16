@@ -60,6 +60,7 @@ data class GenerationStats(
         }
 }
 
+@Serializable
 data class Attachment(
     val id: String,
     val messageId: String,
@@ -75,6 +76,7 @@ data class Attachment(
     enum class Kind { IMAGE, DOCUMENT }
 }
 
+@Serializable
 data class ChatMessage(
     val id: String,
     val conversationId: String,

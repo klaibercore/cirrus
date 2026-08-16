@@ -1,5 +1,8 @@
 package dev.klaiber.cirrus.domain.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class Conversation(
     val id: String,
     val title: String,
@@ -49,6 +52,7 @@ data class Conversation(
 }
 
 /** A reusable system prompt + parameter bundle, equivalent to a lightweight "project". */
+@Serializable
 data class Preset(
     val id: String,
     val name: String,

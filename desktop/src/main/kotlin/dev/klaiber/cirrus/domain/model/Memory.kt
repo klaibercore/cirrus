@@ -1,5 +1,7 @@
 package dev.klaiber.cirrus.domain.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * One thing worth remembering between conversations.
  *
@@ -7,6 +9,7 @@ package dev.klaiber.cirrus.domain.model
  * to sit in a system prompt without crowding out the conversation, and by still being true next
  * month — "prefers Kotlin over Java" is a memory, "asked about coroutines on Tuesday" is not.
  */
+@Serializable
 data class Memory(
     val id: String,
     val content: String,

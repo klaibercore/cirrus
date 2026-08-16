@@ -1,5 +1,7 @@
 package dev.klaiber.cirrus.domain.model
 
+import kotlinx.serialization.Serializable
+
 enum class ThemeMode(val label: String) {
     SYSTEM("Follow system"),
     LIGHT("Light"),
@@ -12,6 +14,7 @@ enum class ThemeMode(val label: String) {
  * [defaultParams] seeds each new conversation; conversations then own their own copy so that
  * changing defaults later never rewrites the settings of an existing thread.
  */
+@Serializable
 data class AppSettings(
     val baseUrl: String = "https://ollama.com",
     val hasApiKey: Boolean = false,
