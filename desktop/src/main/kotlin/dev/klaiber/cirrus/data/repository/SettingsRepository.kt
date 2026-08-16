@@ -181,6 +181,8 @@ class SettingsRepository(
 
     // ---- Read aloud ----------------------------------------------------------------------------
 
+    suspend fun setReadAloudEnabled(enabled: Boolean) = update { it.copy(readAloudEnabled = enabled) }
+
     suspend fun setSpeechEngine(engine: SpeechEngine) = update { it.copy(speechEngine = engine) }
 
     suspend fun setElevenLabsKey(rawKey: String) {

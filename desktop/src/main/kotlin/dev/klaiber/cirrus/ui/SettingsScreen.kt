@@ -1,6 +1,7 @@
 package dev.klaiber.cirrus.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -56,7 +58,14 @@ import kotlinx.coroutines.launch
  * is not there. Renaming one here means renaming it in `SettingsCatalog` too.
  */
 @Composable
-fun SettingsScreen(container: AppContainer, onClose: () -> Unit) {
+fun SettingsScreen(
+    container: AppContainer,
+    onClose: () -> Unit,
+    onOpenMemory: () -> Unit,
+    onOpenAgents: () -> Unit,
+    onOpenMcpServers: () -> Unit,
+    onRunSetup: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val repository = container.settingsRepository
     val settings by repository.settings.collectAsState(AppSettings())
@@ -86,6 +95,31 @@ fun SettingsScreen(container: AppContainer, onClose: () -> Unit) {
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            item {
+                Section(SettingsSection.MANAGE) {
+                    LinkRow(
+                        title = "Memory",
+                        summary = "Browse, edit, pin and retire what Cirrus remembers about you.",
+                        onClick = onOpenMemory,
+                    )
+                    LinkRow(
+                        title = "Agents",
+                        summary = "Prompts that run on a schedule and write their answers into a thread.",
+                        onClick = onOpenAgents,
+                    )
+                    LinkRow(
+                        title = "MCP servers",
+                        summary = "Attach a Model Context Protocol server and use the tools it offers.",
+                        onClick = onOpenMcpServers,
+                    )
+                    LinkRow(
+                        title = "Run setup again",
+                        summary = "The first-run wizard: host, key, model, and the optional extras.",
+                        onClick = onRunSetup,
+                    )
+                }
+            }
+
             item {
                 ConnectionSection(container = container, settings = settings)
             }
@@ -152,6 +186,20 @@ fun SettingsScreen(container: AppContainer, onClose: () -> Unit) {
                         checked = settings.writeToolsAllowed,
                         onChange = { scope.launch { repository.setWriteToolsAllowed(it) } },
                     )
+                    SwitchRow(
+                        title = "Nightly memory pass",
+                        summary = "Merges duplicate memories and retires what has been superseded. " +
+                            "Nothing is deleted — retiring is archiving, and the memory screen " +
+                            "restores anything.",
+                        checked = settings.memoryConsolidationEnabled,
+                        onChange = { scope.launch { repository.setMemoryConsolidationEnabled(it) } },
+                    )
+                    NumberRow(
+                        title = "Nightly pass hour",
+                        summary = "Local hour it runs at. Late enough that nobody is using the model.",
+                        value = settings.memoryConsolidationHour,
+                        onChange = { scope.launch { repository.setMemoryConsolidationHour(it) } },
+                    )
                     NumberRow(
                         title = "Web search results",
                         summary = "How many results a search returns. More costs context.",
@@ -217,6 +265,12 @@ fun SettingsScreen(container: AppContainer, onClose: () -> Unit) {
                         summary = "Enter sends and Shift+Enter starts a line, rather than the reverse.",
                         checked = settings.sendOnEnter,
                         onChange = { scope.launch { repository.setSendOnEnter(it) } },
+                    )
+                    SwitchRow(
+                        title = "Suggested openers",
+                        summary = "Four starter prompts on an empty chat, written by your own model.",
+                        checked = settings.showStarterPrompts,
+                        onChange = { scope.launch { repository.setShowStarterPrompts(it) } },
                     )
                     SwitchRow(
                         title = "Developer mode",
@@ -339,6 +393,12 @@ private fun SpeechSection(container: AppContainer, settings: AppSettings) {
             text = settings.speechEngine.description,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SwitchRow(
+            title = "Read aloud",
+            summary = "Offers a speak button on each answer.",
+            checked = settings.readAloudEnabled,
+            onChange = { scope.launch { repository.setReadAloudEnabled(it) } },
         )
         SecretRow(
             title = "ElevenLabs API key",
@@ -481,6 +541,32 @@ private fun Section(section: SettingsSection, content: @Composable () -> Unit) {
             modifier = Modifier.padding(bottom = 8.dp),
         )
         content()
+    }
+}
+
+/** A row that goes somewhere, rather than changing something here. */
+@Composable
+private fun LinkRow(title: String, summary: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 16.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

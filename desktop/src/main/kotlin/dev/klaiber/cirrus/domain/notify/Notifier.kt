@@ -17,6 +17,15 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 interface Notifier {
 
+    /**
+     * Whether this machine can show a notification at all.
+     *
+     * On Android the equivalent question is a runtime permission, which the user can be asked for.
+     * Here it is whether the desktop has a system tray — a headless session, or a desktop with no
+     * tray area, has nothing to ask for and nothing to grant.
+     */
+    val isAvailable: Boolean
+
     /** Returns false when the platform refused — usually because notifications are switched off. */
     fun notify(
         title: String,
@@ -65,6 +74,8 @@ interface Notifier {
  * notification, so the model can say the thing in its answer instead.
  */
 class DesktopNotifier : Notifier {
+
+    override val isAvailable: Boolean get() = SystemTray.isSupported()
 
     private val trayReady = AtomicBoolean(false)
     private var trayIcon: TrayIcon? = null

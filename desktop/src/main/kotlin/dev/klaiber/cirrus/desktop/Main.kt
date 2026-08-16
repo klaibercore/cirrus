@@ -1,23 +1,12 @@
 package dev.klaiber.cirrus.desktop
 
-import androidx.compose.material3.Surface
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import dev.klaiber.cirrus.di.AppContainer
-import dev.klaiber.cirrus.domain.model.AppSettings
-import dev.klaiber.cirrus.ui.ChatScreen
-import dev.klaiber.cirrus.ui.SettingsScreen
-import dev.klaiber.cirrus.ui.theme.CirrusTheme
+import dev.klaiber.cirrus.ui.CirrusApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,22 +42,6 @@ fun main() {
                 window.requestFocus()
             }
             CirrusApp(container)
-        }
-    }
-}
-
-@Composable
-private fun CirrusApp(container: AppContainer) {
-    val settings by container.settingsRepository.settings.collectAsState(AppSettings())
-    var showSettings by remember { mutableStateOf(false) }
-
-    CirrusTheme(themeMode = settings.themeMode) {
-        Surface(Modifier) {
-            if (showSettings) {
-                SettingsScreen(container = container, onClose = { showSettings = false })
-            } else {
-                ChatScreen(container = container, onOpenSettings = { showSettings = true })
-            }
         }
     }
 }

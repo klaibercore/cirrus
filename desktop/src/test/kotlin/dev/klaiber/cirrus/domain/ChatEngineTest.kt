@@ -554,6 +554,8 @@ class ChatEngineTest {
 
 /** Records rather than posts, since there is no notification manager in a JVM test. */
 private class RecordingNotifier : Notifier {
+
+    override val isAvailable: Boolean = true
     val posted = mutableListOf<Pair<String, String>>()
 
     override fun notify(

@@ -12,6 +12,7 @@ package dev.klaiber.cirrus.ui
  * Android's list of sub-screens, so a heading is all a section needs.
  */
 enum class SettingsSection(val title: String) {
+    MANAGE("Manage"),
     CONNECTION("Connection"),
     MODEL("Model"),
     TOOLS("Tools"),

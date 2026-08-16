@@ -357,6 +357,8 @@ private class StubTool(
 
 /** There is no tray in a JVM test, and nothing here asserts on one. */
 private class SilentNotifier : Notifier {
+
+    override val isAvailable: Boolean = true
     override fun notify(
         title: String,
         body: String,

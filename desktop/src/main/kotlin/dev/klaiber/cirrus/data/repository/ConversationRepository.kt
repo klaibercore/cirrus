@@ -94,6 +94,24 @@ class ConversationRepository(
             .sortedByDescending { it.updatedAt }
             .take(limit)
 
+    /**
+     * Promotes an agent's run to an ordinary conversation.
+     *
+     * Called the moment someone replies to a run: from then on it is a thread they are working in,
+     * so it belongs in the drawer and retention must not delete it.
+     */
+    suspend fun detachFromAgent(id: String) = mutate { state ->
+        state.copy(
+            conversations = state.conversations.map { conversation ->
+                if (conversation.id != id || conversation.agentId == null) {
+                    conversation
+                } else {
+                    conversation.copy(agentId = null, updatedAt = System.currentTimeMillis())
+                }
+            },
+        )
+    }
+
     /** Threads this agent wrote that nobody has replied to — replying clears [Conversation.agentId]. */
     suspend fun conversationsForAgent(agentId: String): List<Conversation> =
         _state.value.conversations.filter { it.agentId == agentId }

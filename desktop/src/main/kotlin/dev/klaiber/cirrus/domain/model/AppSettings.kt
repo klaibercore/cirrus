@@ -73,6 +73,8 @@ data class AppSettings(
     val hasSpotifyAccount: Boolean = false,
     val spotifyAccountName: String = "",
     val spotifyPremium: Boolean = false,
+    /** Offers the read-aloud button on each answer. */
+    val readAloudEnabled: Boolean = true,
     /** Who does the talking when an answer is read aloud. */
     val speechEngine: SpeechEngine = SpeechEngine.DEVICE,
     val hasElevenLabsKey: Boolean = false,

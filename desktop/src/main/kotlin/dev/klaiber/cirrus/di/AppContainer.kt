@@ -13,6 +13,7 @@ import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
 import dev.klaiber.cirrus.data.remote.spotify.SpotifyAuth
 import dev.klaiber.cirrus.data.remote.spotify.SpotifyClient
 import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
+import dev.klaiber.cirrus.data.AttachmentImporter
 import dev.klaiber.cirrus.data.repository.AgentRepository
 import dev.klaiber.cirrus.data.repository.ConversationRepository
 import dev.klaiber.cirrus.data.repository.JsonStore
@@ -251,6 +252,8 @@ class AppContainer(
     val modelRepository = ModelRepository(ollamaClient, capabilityDetector, scope)
 
     // ---- Tools -------------------------------------------------------------------------------
+
+    val attachmentImporter = AttachmentImporter(dataDir)
 
     val notifier = DesktopNotifier()
 
