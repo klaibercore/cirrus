@@ -7,6 +7,7 @@ import dev.klaiber.cirrus.data.remote.ApiCredentials
 import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dev.klaiber.cirrus.data.repository.JsonStore
 import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.MemoryRepository
@@ -75,6 +76,7 @@ class ToolRegistryTest {
             store = JsonStore(file, json),
             credentials = ApiCredentials(),
             gitHubCredentials = gitHubCredentials,
+            spotifyCredentials = SpotifyCredentials(),
         )
 
         val http = OkHttpClient()
@@ -125,11 +127,17 @@ class ToolRegistryTest {
                 shell = listOf(StubTool("run_command")),
                 apps = listOf(StubTool("open_app")),
             ),
+            // Stand-ins again: one read and one write, so both halves of the Spotify gate are
+            // exercised without an account behind them.
+            spotifyTools = SpotifyToolSet(
+                all = listOf(StubTool("spotify_search"), StubTool("spotify_edit", writes = true)),
+            ),
             settingsTool = DescribeSettingsTool(settings),
             // No server is attached, so this contributes nothing to the offered definitions.
             mcpTools = McpToolSet(repository = mcpServerRepository, client = mcpClient),
             settingsRepository = settings,
             gitHubCredentials = gitHubCredentials,
+            spotifyCredentials = SpotifyCredentials(),
         )
     }
 

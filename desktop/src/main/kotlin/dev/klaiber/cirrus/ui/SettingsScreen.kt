@@ -166,6 +166,10 @@ fun SettingsScreen(container: AppContainer, onClose: () -> Unit) {
             }
 
             item {
+                MusicSection(container = container, settings = settings)
+            }
+
+            item {
                 Section(SettingsSection.GITHUB) {
                     SecretRow(
                         title = "Personal access token",
@@ -295,6 +299,99 @@ private fun ConnectionSection(container: AppContainer, settings: AppSettings) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/**
+ * Spotify: a client ID, then a sign-in, then the switch.
+ *
+ * In that order because each step is useless without the one before it, and a switch that can be
+ * turned on before there is an account behind it produces exactly the "on, but not set up yet"
+ * state the catalogue had to grow a vocabulary for.
+ */
+@Composable
+private fun MusicSection(container: AppContainer, settings: AppSettings) {
+    val scope = rememberCoroutineScope()
+    val repository = container.settingsRepository
+
+    var clientId by remember(settings.spotifyClientId) { mutableStateOf(settings.spotifyClientId) }
+    var signingIn by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<String?>(null) }
+
+    Section(SettingsSection.MUSIC) {
+        Text(
+            text = "Cirrus ships no Spotify client ID — an app you can unzip cannot keep a secret. " +
+                "Create one at developer.spotify.com and add " +
+                dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials.REDIRECT_URI +
+                " as a redirect URI.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = clientId,
+            onValueChange = { clientId = it },
+            label = { Text("Client ID") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(
+                enabled = clientId.trim() != settings.spotifyClientId,
+                onClick = { scope.launch { repository.setSpotifyClientId(clientId) } },
+            ) {
+                Text("Save client ID")
+            }
+            if (settings.hasSpotifyAccount) {
+                TextButton(onClick = { scope.launch { container.spotifySession.signOut() } }) {
+                    Text("Sign out")
+                }
+            } else {
+                TextButton(
+                    enabled = settings.spotifyClientId.isNotBlank() && !signingIn,
+                    onClick = {
+                        scope.launch {
+                            signingIn = true
+                            result = null
+                            result = container.spotifySession.signIn().fold(
+                                onSuccess = { name -> "Signed in as $name." },
+                                onFailure = { error -> error.userMessage() },
+                            )
+                            signingIn = false
+                        }
+                    },
+                ) {
+                    Text("Connect Spotify")
+                }
+            }
+            if (signingIn) {
+                Spacer(Modifier.width(8.dp))
+                CircularProgressIndicator(Modifier.height(16.dp).width(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Finish the sign-in in your browser.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        (result ?: settings.spotifyAccountName.takeIf { it.isNotBlank() }?.let { name ->
+            if (settings.spotifyPremium) "Signed in as $name (Premium)." else "Signed in as $name."
+        })?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        SwitchRow(
+            title = "Spotify",
+            summary = "Searching Spotify, your playlists and saved music, what is playing, and " +
+                "playback control. Playback needs Premium; Spotify answers 403 without it.",
+            checked = settings.spotifyEnabled,
+            onChange = { scope.launch { repository.setSpotifyEnabled(it) } },
+        )
     }
 }
 

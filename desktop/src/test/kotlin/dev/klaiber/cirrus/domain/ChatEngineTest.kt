@@ -9,6 +9,7 @@ import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.OllamaException
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dev.klaiber.cirrus.data.repository.JsonStore
 import dev.klaiber.cirrus.data.repository.McpServerRepository
 import dev.klaiber.cirrus.data.repository.MemoryRepository
@@ -28,6 +29,7 @@ import dev.klaiber.cirrus.domain.tools.MemoryToolSet
 import dev.klaiber.cirrus.domain.tools.RecallTool
 import dev.klaiber.cirrus.domain.tools.RememberTool
 import dev.klaiber.cirrus.domain.tools.SendNotificationTool
+import dev.klaiber.cirrus.domain.tools.SpotifyToolSet
 import dev.klaiber.cirrus.domain.tools.ToolRegistry
 import dev.klaiber.cirrus.domain.tools.WebFetchTool
 import dev.klaiber.cirrus.domain.tools.WebSearchTool
@@ -103,6 +105,7 @@ class ChatEngineTest {
             store = JsonStore(settingsFile, json),
             credentials = ApiCredentials(),
             gitHubCredentials = gitHubCredentials,
+            spotifyCredentials = SpotifyCredentials(),
         )
         val memoryRepository = MemoryRepository(JsonStore(memoryFile, json))
         val gitHubClient = GitHubClient(OkHttpClient(), json, gitHubCredentials)
@@ -144,11 +147,13 @@ class ChatEngineTest {
             ),
             notificationTool = SendNotificationTool(RecordingNotifier()),
             deviceTools = DeviceToolSet(shell = emptyList(), apps = emptyList()),
+            spotifyTools = SpotifyToolSet(all = emptyList()),
             settingsTool = DescribeSettingsTool(settingsRepository),
             // No server is attached, so this contributes nothing to the offered definitions.
             mcpTools = McpToolSet(repository = mcpServerRepository, client = mcpClient),
             settingsRepository = settingsRepository,
             gitHubCredentials = gitHubCredentials,
+            spotifyCredentials = SpotifyCredentials(),
         )
     }
 

@@ -2,6 +2,7 @@ package dev.klaiber.cirrus.domain.tools
 
 import dev.klaiber.cirrus.data.remote.OllamaClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dev.klaiber.cirrus.data.repository.SettingsRepository
 import dev.klaiber.cirrus.domain.model.AppSettings
 import dev.klaiber.cirrus.domain.settings.SettingSwitch
@@ -185,10 +186,12 @@ class ToolRegistry(
     private val memoryTools: MemoryToolSet,
     private val notificationTool: SendNotificationTool,
     private val deviceTools: DeviceToolSet,
+    private val spotifyTools: SpotifyToolSet,
     private val settingsTool: DescribeSettingsTool,
     private val mcpTools: McpToolSet,
     private val settingsRepository: SettingsRepository,
     private val gitHubCredentials: GitHubCredentials,
+    private val spotifyCredentials: SpotifyCredentials,
 ) {
     private val webTools: List<CirrusTool> = listOf(webSearchTool, webFetchTool)
 
@@ -240,6 +243,12 @@ class ToolRegistry(
             gate = SettingSwitch.GITHUB,
             external = true,
             ready = gitHubCredentials.isConfigured,
+        ),
+        Group(
+            tools = spotifyTools.all,
+            gate = SettingSwitch.SPOTIFY,
+            external = true,
+            ready = spotifyCredentials.isConnected,
         ),
         // Only servers whose tools have actually been listed contribute here, so one that is
         // switched off or unreachable is silently absent rather than offered and broken.
@@ -386,6 +395,11 @@ class DeviceToolSet(
  * An explicit list is easier to audit than an injected set. Which of them write is no longer this
  * class's business — each tool declares it on [CirrusTool.writes], and one gate in [ToolRegistry]
  * reads that for every integration alike.
+ */
+class SpotifyToolSet(val all: List<CirrusTool>)
+
+/**
+ * The GitHub tools.
  */
 class GitHubToolSet(
     listRepos: ListReposTool,

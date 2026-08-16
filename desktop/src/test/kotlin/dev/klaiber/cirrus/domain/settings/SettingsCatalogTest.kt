@@ -92,6 +92,7 @@ class SettingsCatalogTest {
         assertTrue("memory is on by default", SettingSwitch.MEMORY.isOn(defaults))
         assertTrue("notifications are on by default", SettingSwitch.NOTIFICATIONS.isOn(defaults))
         assertTrue("apps act, so they start off", !SettingSwitch.APPS.isOn(defaults))
+        assertTrue("spotify needs setting up first", !SettingSwitch.SPOTIFY.isOn(defaults))
         assertTrue("writes are never on by default", !SettingSwitch.WRITES.isOn(defaults))
         assertTrue("github needs a token first", !SettingSwitch.GITHUB.isOn(defaults))
     }
@@ -105,14 +106,13 @@ class SettingsCatalogTest {
     }
 
     /**
-     * The desktop build drops the phone-only switches, and must not merely leave them unreachable:
-     * a switch the model can read about is a capability it will offer, and there is no location or
-     * Spotify tool here to back one up.
+     * A switch the model can read about is a capability it will offer, so one with nothing behind
+     * it is worse than absent. Location is the only such switch on desktop: no tool here answers
+     * it, and there is no permission to ask for.
      */
     @Test
     fun `no switch survives that the desktop build cannot honour`() {
         val ids = SettingSwitch.entries.map { it.id }
         assertTrue("location is not a desktop capability", "location" !in ids)
-        assertTrue("spotify is not wired on desktop", "spotify" !in ids)
     }
 }

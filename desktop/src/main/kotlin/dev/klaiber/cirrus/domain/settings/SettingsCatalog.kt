@@ -15,8 +15,8 @@ import dev.klaiber.cirrus.domain.model.AppSettings
  * before promising something. The [path] strings are the load-bearing part: "it is disabled" is
  * not actionable, and "Settings → Tools → Memory" is.
  *
- * Desktop drops the phone-only switches (location, Spotify) — the desktop build has no such tools,
- * and a switch that cannot do anything would only mislead the model into promising it. The [path]
+ * Desktop drops the switches it cannot honour — location, which no desktop tool answers — because a
+ * switch that cannot do anything would only mislead the model into promising it. The [path]
  * strings name sections of `SettingsScreen`; when a section is renamed, these move with it, or they
  * send someone looking for a row that is not there.
  */
@@ -70,6 +70,19 @@ enum class SettingSwitch(
         summary = "Tools that change something outside Cirrus and cannot be undone from inside " +
             "it — opening a GitHub issue or committing a file.",
         reader = AppSettings::writeToolsAllowed,
+    ),
+    SPOTIFY(
+        id = "spotify",
+        title = "Spotify",
+        path = "Settings → Music → Spotify",
+        summary = "Searching Spotify, reading the user's playlists and saved music, seeing what " +
+            "is playing, and controlling playback.",
+        reader = AppSettings::spotifyEnabled,
+        credential = Credential(
+            hint = "Needs a client ID from developer.spotify.com and a one-time sign-in, both " +
+                "on the same screen. Playback control also needs Spotify Premium.",
+            present = AppSettings::hasSpotifyAccount,
+        ),
     ),
     GITHUB(
         id = "github",

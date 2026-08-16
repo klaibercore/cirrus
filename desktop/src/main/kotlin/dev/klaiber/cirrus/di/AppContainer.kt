@@ -8,6 +8,9 @@ import dev.klaiber.cirrus.data.mcp.SseMcpTransport
 import dev.klaiber.cirrus.data.mcp.StreamableHttpMcpTransport
 import dev.klaiber.cirrus.data.remote.github.GitHubClient
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyAuth
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyClient
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dev.klaiber.cirrus.data.repository.ConversationRepository
 import dev.klaiber.cirrus.data.repository.JsonStore
 import dev.klaiber.cirrus.data.repository.McpServerRepository
@@ -18,6 +21,8 @@ import dev.klaiber.cirrus.domain.ChatEngine
 import dev.klaiber.cirrus.domain.ConversationTitler
 import dev.klaiber.cirrus.domain.TurnController
 import dev.klaiber.cirrus.domain.notify.DesktopNotifier
+import dev.klaiber.cirrus.domain.spotify.SpotifyRedirectListener
+import dev.klaiber.cirrus.domain.spotify.SpotifySession
 import dev.klaiber.cirrus.domain.tools.CirrusTool
 import dev.klaiber.cirrus.domain.tools.DescribeSettingsTool
 import dev.klaiber.cirrus.domain.tools.DeviceToolSet
@@ -28,6 +33,7 @@ import dev.klaiber.cirrus.domain.tools.MemoryToolSet
 import dev.klaiber.cirrus.domain.tools.RecallTool
 import dev.klaiber.cirrus.domain.tools.RememberTool
 import dev.klaiber.cirrus.domain.tools.SendNotificationTool
+import dev.klaiber.cirrus.domain.tools.SpotifyToolSet
 import dev.klaiber.cirrus.domain.tools.ToolRegistry
 import dev.klaiber.cirrus.domain.tools.WebFetchTool
 import dev.klaiber.cirrus.domain.tools.WebSearchTool
@@ -52,6 +58,11 @@ import dev.klaiber.cirrus.domain.tools.shell.RunCommandTool
 import dev.klaiber.cirrus.domain.tools.shell.ShellRunner
 import dev.klaiber.cirrus.domain.tools.shell.ShellWorkspace
 import dev.klaiber.cirrus.domain.tools.shell.SystemInfoTool
+import dev.klaiber.cirrus.domain.tools.spotify.SpotifyLibraryTool
+import dev.klaiber.cirrus.domain.tools.spotify.SpotifyNowPlayingTool
+import dev.klaiber.cirrus.domain.tools.spotify.SpotifyPlaybackTool
+import dev.klaiber.cirrus.domain.tools.spotify.SpotifyPlaylistEditTool
+import dev.klaiber.cirrus.domain.tools.spotify.SpotifySearchTool
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
@@ -90,6 +101,7 @@ class AppContainer(
 
     val apiCredentials = ApiCredentials()
     val gitHubCredentials = GitHubCredentials()
+    val spotifyCredentials = SpotifyCredentials()
 
     // ---- HTTP --------------------------------------------------------------------------------
 
@@ -133,6 +145,26 @@ class AppContainer(
         .retryOnConnectionFailure(true)
         .build()
 
+    /**
+     * Spotify's own client, for the reason GitHub has one: the Ollama client attaches the Ollama
+     * key to every request, and that key must never reach a third party. Its own interceptor is
+     * absent because [SpotifyClient] sets the bearer per call from the session's live token.
+     */
+    private val spotifyHttp: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            chain.proceed(
+                chain.request().newBuilder()
+                    .header("User-Agent", "Cirrus/1.0.0 (Desktop)")
+                    .build(),
+            )
+        }
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .build()
+
     private val gitHubHttp: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
             val builder = chain.request().newBuilder()
@@ -161,10 +193,22 @@ class AppContainer(
 
     // ---- Repositories ------------------------------------------------------------------------
 
+    val spotifyClient = SpotifyClient(spotifyHttp, wireJson, spotifyCredentials)
+    private val spotifyAuth = SpotifyAuth(spotifyHttp, spotifyCredentials, wireJson)
+
     val settingsRepository = SettingsRepository(
         store = JsonStore(File(dataDir, "settings.json"), persistenceJson),
         credentials = apiCredentials,
         gitHubCredentials = gitHubCredentials,
+        spotifyCredentials = spotifyCredentials,
+    )
+
+    val spotifySession = SpotifySession(
+        auth = spotifyAuth,
+        client = spotifyClient,
+        credentials = spotifyCredentials,
+        settings = settingsRepository,
+        redirects = SpotifyRedirectListener(),
     )
 
     val conversationRepository = ConversationRepository(
@@ -231,6 +275,16 @@ class AppContainer(
         ),
     )
 
+    private val spotifyToolSet = SpotifyToolSet(
+        all = listOf(
+            SpotifySearchTool(spotifySession, spotifyClient),
+            SpotifyNowPlayingTool(spotifySession, spotifyClient),
+            SpotifyLibraryTool(spotifySession, spotifyClient),
+            SpotifyPlaybackTool(spotifySession, spotifyClient, settingsRepository),
+            SpotifyPlaylistEditTool(spotifySession, spotifyClient),
+        ),
+    )
+
     private val settingsTool = DescribeSettingsTool(settingsRepository)
 
     private val mcpToolSet = McpToolSet(repository = mcpServerRepository, client = mcpClient)
@@ -242,10 +296,12 @@ class AppContainer(
         memoryTools = memoryToolSet,
         notificationTool = notificationTool,
         deviceTools = deviceToolSet,
+        spotifyTools = spotifyToolSet,
         settingsTool = settingsTool,
         mcpTools = mcpToolSet,
         settingsRepository = settingsRepository,
         gitHubCredentials = gitHubCredentials,
+        spotifyCredentials = spotifyCredentials,
     )
 
     // ---- Domain ------------------------------------------------------------------------------

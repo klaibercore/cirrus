@@ -2,6 +2,7 @@ package dev.klaiber.cirrus.data.repository
 
 import dev.klaiber.cirrus.data.remote.ApiCredentials
 import dev.klaiber.cirrus.data.remote.github.GitHubCredentials
+import dev.klaiber.cirrus.data.remote.spotify.SpotifyCredentials
 import dev.klaiber.cirrus.domain.model.AppSettings
 import dev.klaiber.cirrus.domain.model.GenerationParams
 import dev.klaiber.cirrus.domain.model.ThemeMode
@@ -23,6 +24,7 @@ class SettingsRepository(
     private val store: JsonStore,
     private val credentials: ApiCredentials,
     private val gitHubCredentials: GitHubCredentials,
+    private val spotifyCredentials: SpotifyCredentials = SpotifyCredentials(),
 ) {
 
     private val _settings = MutableStateFlow(AppSettings())
@@ -35,15 +37,26 @@ class SettingsRepository(
 
     private var apiKey: String? = null
     private var gitHubToken: String? = null
+    private var spotifyAccessToken: String? = null
+    private var spotifyRefreshToken: String? = null
+    private var spotifyExpiresAt: Long = 0L
+
+    /** A sign-in in flight. In memory on purpose — see [setSpotifyPendingAuth]. */
+    @Volatile
+    private var pendingAuth: PendingAuth? = null
 
     /** Loads the persisted file, or leaves the defaults when there is none. */
     suspend fun load() {
         val persisted = store.read(PersistedSettings.serializer()) { PersistedSettings() }
         apiKey = persisted.apiKey
         gitHubToken = persisted.gitHubToken
+        spotifyAccessToken = persisted.spotifyAccessToken
+        spotifyRefreshToken = persisted.spotifyRefreshToken
+        spotifyExpiresAt = persisted.spotifyExpiresAt
         _settings.value = persisted.settings.copy(
             hasApiKey = apiKey != null,
             hasGitHubToken = gitHubToken != null,
+            hasSpotifyAccount = spotifyRefreshToken != null,
         )
         mirror()
     }
@@ -51,6 +64,13 @@ class SettingsRepository(
     private fun mirror() {
         credentials.update(apiKey, _settings.value.baseUrl)
         gitHubCredentials.update(gitHubToken, _settings.value.writeToolsAllowed)
+        spotifyCredentials.update(
+            clientId = _settings.value.spotifyClientId,
+            accessToken = spotifyAccessToken,
+            refreshToken = spotifyRefreshToken,
+            expiresAt = spotifyExpiresAt,
+            writesAllowed = _settings.value.writeToolsAllowed,
+        )
     }
 
     private suspend fun update(transform: (AppSettings) -> AppSettings) {
@@ -62,7 +82,14 @@ class SettingsRepository(
     private suspend fun persist() {
         store.write(
             PersistedSettings.serializer(),
-            PersistedSettings(apiKey = apiKey, gitHubToken = gitHubToken, settings = _settings.value),
+            PersistedSettings(
+                apiKey = apiKey,
+                gitHubToken = gitHubToken,
+                spotifyAccessToken = spotifyAccessToken,
+                spotifyRefreshToken = spotifyRefreshToken,
+                spotifyExpiresAt = spotifyExpiresAt,
+                settings = _settings.value,
+            ),
         )
     }
 
@@ -135,6 +162,76 @@ class SettingsRepository(
     suspend fun setNotificationToolEnabled(enabled: Boolean) =
         update { it.copy(notificationToolEnabled = enabled) }
 
+    // ---- Spotify -------------------------------------------------------------------------------
+
+    suspend fun setSpotifyEnabled(enabled: Boolean) = update { it.copy(spotifyEnabled = enabled) }
+
+    suspend fun setSpotifyClientId(clientId: String) {
+        _settings.value = _settings.value.copy(spotifyClientId = clientId.trim())
+        mirror()
+        persist()
+    }
+
+    /**
+     * Stores a freshly issued pair of tokens.
+     *
+     * A refresh token is worth as much as a password — it mints access tokens until it is revoked.
+     * The Android build wraps both in a Keystore envelope; there is none here, so they sit in the
+     * data directory beside the Ollama key, which is the same trust boundary this build already
+     * asks the user to accept.
+     */
+    suspend fun setSpotifyTokens(
+        accessToken: String,
+        refreshToken: String?,
+        expiresAt: Long,
+        accountName: String? = null,
+        premium: Boolean? = null,
+    ) {
+        spotifyAccessToken = accessToken
+        // Spotify omits refresh_token on a refresh response; the previous one stays valid, so an
+        // absent value must not clear the stored one.
+        refreshToken?.let { spotifyRefreshToken = it }
+        spotifyExpiresAt = expiresAt
+        _settings.value = _settings.value.copy(
+            hasSpotifyAccount = spotifyRefreshToken != null,
+            spotifyAccountName = accountName ?: _settings.value.spotifyAccountName,
+            spotifyPremium = premium ?: _settings.value.spotifyPremium,
+        )
+        mirror()
+        persist()
+    }
+
+    /**
+     * Remembers what a sign-in in progress will need when the browser comes back.
+     *
+     * Held in memory rather than written down, unlike on Android. There the verifier is persisted
+     * because the OS is free to kill the app while somebody reads Spotify's consent screen; a
+     * desktop process stays up for the length of the trip, and the listener waiting for the
+     * redirect is in this same process, so a verifier that died with it would have nothing left
+     * to serve anyway.
+     */
+    fun setSpotifyPendingAuth(verifier: String, state: String) {
+        pendingAuth = PendingAuth(verifier, state)
+    }
+
+    /** Reads the pending sign-in and clears it, so a code can never be replayed against it. */
+    fun consumeSpotifyPendingAuth(): PendingAuth? = pendingAuth.also { pendingAuth = null }
+
+    data class PendingAuth(val verifier: String, val state: String)
+
+    suspend fun clearSpotifyAccount() {
+        spotifyAccessToken = null
+        spotifyRefreshToken = null
+        spotifyExpiresAt = 0L
+        _settings.value = _settings.value.copy(
+            hasSpotifyAccount = false,
+            spotifyAccountName = "",
+            spotifyPremium = false,
+        )
+        mirror()
+        persist()
+    }
+
     suspend fun setOnboardingCompleted(completed: Boolean) =
         update { it.copy(onboardingCompleted = completed) }
 
@@ -142,10 +239,13 @@ class SettingsRepository(
         update { it.copy(showStarterPrompts = enabled) }
 }
 
-/** The on-disk shape: the settings plus the two secrets that [AppSettings] only mirrors. */
+/** The on-disk shape: the settings plus the secrets that [AppSettings] only mirrors the presence of. */
 @Serializable
 private data class PersistedSettings(
     val apiKey: String? = null,
     val gitHubToken: String? = null,
+    val spotifyAccessToken: String? = null,
+    val spotifyRefreshToken: String? = null,
+    val spotifyExpiresAt: Long = 0L,
     val settings: AppSettings = AppSettings(),
 )
