@@ -19,6 +19,11 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.javax.inject)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
+    testImplementation(libs.okhttp.mockwebserver)
 }
 
 compose.desktop {

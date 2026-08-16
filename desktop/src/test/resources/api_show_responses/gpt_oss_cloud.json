@@ -1,0 +1,17 @@
+{
+  "details": {
+    "parent_model": "",
+    "format": "gguf",
+    "family": "gptoss",
+    "families": ["gptoss"],
+    "parameter_size": "116.8B",
+    "quantization_level": "MXFP4"
+  },
+  "model_info": {
+    "general.architecture": "gptoss",
+    "gptoss.context_length": 131072
+  },
+  "capabilities": ["completion", "tools", "thinking", "telepathy"],
+  "remote_model": "gpt-oss:120b",
+  "remote_host": "https://ollama.com"
+}
