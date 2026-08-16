@@ -299,7 +299,7 @@ private fun MessageItem(
                     if (isUser || !renderMarkdown) {
                         Text(text = content, style = MaterialTheme.typography.bodyMedium)
                     } else {
-                        MarkdownText(text = content)
+                        MarkdownText(markdown = content)
                     }
                 } else if (liveContent != null) {
                     // Streaming but nothing has arrived yet.
