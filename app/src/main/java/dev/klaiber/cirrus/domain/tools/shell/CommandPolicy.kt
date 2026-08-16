@@ -44,10 +44,12 @@ object CommandPolicy {
         "date", "cal", "uptime",
         // Looking at files
         "ls", "cat", "head", "tail", "wc", "stat", "find", "du", "df", "file", "readlink",
-        // Text
+        // Text. The whole point of the shell here, so the list is generous: every one of these
+        // reads its input and writes to stdout, which is the shape the model works in.
         "grep", "egrep", "fgrep", "sed", "sort", "uniq", "cut", "tr", "rev", "tac", "nl", "fold",
-        "paste", "comm", "diff", "cmp", "basename", "dirname", "printf", "echo", "seq", "expr",
-        "xxd", "od", "base64", "md5sum", "sha1sum", "sha256sum", "cksum", "strings",
+        "paste", "comm", "join", "shuf", "diff", "cmp", "basename", "dirname", "printf", "echo",
+        "seq", "expr", "xxd", "od", "base64", "md5sum", "sha1sum", "sha256sum", "sha512sum",
+        "cksum", "strings",
         // The machine
         "uname", "getprop", "free", "nproc", "id", "whoami", "hostname", "printenv", "pwd", "which",
         "ps", "ping",

@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,7 +40,6 @@ import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.StopCircle
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -70,7 +68,6 @@ import dev.klaiber.cirrus.domain.model.Attachment
 import dev.klaiber.cirrus.domain.model.ChatMessage
 import dev.klaiber.cirrus.domain.model.GenerationStats
 import dev.klaiber.cirrus.domain.model.Role
-import dev.klaiber.cirrus.domain.model.ToolInvocation
 import dev.klaiber.cirrus.ui.components.OutlinedPanel
 import dev.klaiber.cirrus.ui.markdown.MarkdownText
 import dev.klaiber.cirrus.ui.markdown.highlighting
@@ -225,9 +222,9 @@ private fun AssistantMessage(
             )
         }
 
-        message.toolInvocations.forEach { invocation ->
-            ToolCard(invocation, Modifier.padding(bottom = 8.dp))
-        }
+        // One panel for the lot, rather than one card per call: see ToolActivity for why the
+        // provenance of an answer must not out-weigh the answer.
+        ToolActivity(message.toolInvocations, Modifier.padding(bottom = 8.dp))
 
         if (message.content.isNotBlank()) {
             if (renderMarkdown) {
@@ -323,94 +320,6 @@ private fun ThinkingSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ToolCard(invocation: ToolInvocation, modifier: Modifier = Modifier) {
-    var expanded by remember { mutableStateOf(false) }
-    val summary = remember(invocation.argumentsJson) { summarizeArguments(invocation.argumentsJson) }
-
-    OutlinedPanel(modifier = modifier.fillMaxWidth()) {
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Search,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = invocation.name.replace('_', ' '),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    if (summary.isNotBlank()) {
-                        Text(
-                            text = summary,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                    }
-                }
-                when {
-                    invocation.errorMessage != null -> Icon(
-                        imageVector = Icons.Outlined.ErrorOutline,
-                        contentDescription = "Tool failed",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(18.dp),
-                    )
-
-                    !invocation.isComplete -> PulsingDot()
-
-                    else -> invocation.durationMs?.let { duration ->
-                        Text(
-                            text = "${duration} ms",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-            AnimatedVisibility(visible = expanded) {
-                Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp)) {
-                    Text(
-                        text = "Arguments",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    MonospaceBlock(invocation.argumentsJson, Modifier.fillMaxWidth())
-                    invocation.resultJson?.let { result ->
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = "Result",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        MonospaceBlock(result.take(MAX_TOOL_RESULT_PREVIEW), Modifier.fillMaxWidth())
-                    }
-                    invocation.errorMessage?.let { error ->
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = error,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                }
             }
         }
     }
@@ -575,7 +484,7 @@ private fun StreamingIndicator(hasContent: Boolean) {
 }
 
 @Composable
-private fun PulsingDot() {
+internal fun PulsingDot() {
     val transition = rememberInfiniteTransition(label = "pulse")
     val alpha by transition.animateFloat(
         initialValue = 0.25f,
@@ -673,17 +582,6 @@ private fun AttachmentChip(attachment: Attachment, onRemove: ((String) -> Unit)?
 /** The same tint the markdown renderer uses, so a match looks the same wherever it is found. */
 @Composable
 private fun highlightColor() = LocalTagColors.current.searchHighlight
-
-/** Extracts a one-line hint from a tool's argument JSON without a full parse. */
-private fun summarizeArguments(argumentsJson: String): String =
-    argumentsJson
-        .removePrefix("{")
-        .removeSuffix("}")
-        .replace("\"", "")
-        .replace(":", ": ")
-        .take(120)
-
-private const val MAX_TOOL_RESULT_PREVIEW = 4_000
 
 /** How much of the row a user bubble may take before it wraps. */
 private const val USER_BUBBLE_WIDTH_FRACTION = 0.85f

@@ -28,7 +28,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -72,6 +74,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,6 +82,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -199,29 +203,75 @@ fun ChatScreen(
         }
     }
 
+    // What the transcript actually renders. Hoisted because the list index is load-bearing: tool
+    // and system messages are in `state.messages` and are not rows, so `messages.lastIndex` is not
+    // the last row — it is somewhere short of it, and every scroll built on it landed there.
+    val visibleMessages = remember(state.messages) {
+        state.messages.filter { it.role == Role.USER || it.role == Role.ASSISTANT }
+    }
+
+    // Whether the end of the last row is on screen. A few dp of slack, because "exactly at the
+    // bottom" is a pixel that a fling settles next to rather than on.
+    val bottomSlack = with(LocalDensity.current) { 16.dp.roundToPx() }
+    val atBottom by remember(bottomSlack) {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull() ?: return@derivedStateOf true
+            last.index == info.totalItemsCount - 1 &&
+                last.offset + last.size <= info.viewportEndOffset + bottomSlack
+        }
+    }
+
     // Follow the tail of the transcript as tokens arrive — but only while the reader is still
     // there. Scrolling up mid-answer is how you re-read what was just said, and a transcript that
     // drags you back to the bottom on every token makes that impossible.
-    val isPinnedToBottom by remember {
-        derivedStateOf { !listState.canScrollForward }
+    //
+    // Following is its own state rather than "are we at the bottom right now?", and that is the
+    // fix. A streaming answer moves the bottom away from the reader on every token, so a position
+    // test says "the reader has scrolled up" a few times a second while the reader is sitting
+    // perfectly still — which is why following used to give up mid-answer and the button flickered
+    // in and out. Only a *backward* scroll hands control to the reader, and only arriving back at
+    // the end gives it up: content growing underneath does neither.
+    var followTail by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.lastScrolledBackward }
+            .collect { backward -> if (backward) followTail = false }
     }
-    val lastMessage = state.messages.lastOrNull()
-    LaunchedEffect(state.messages.size, lastMessage?.content?.length, lastMessage?.thinking?.length) {
-        if (isPinnedToBottom && state.messages.isNotEmpty()) {
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .collect { scrolling -> if (!scrolling && atBottom) followTail = true }
+    }
+
+    val lastMessage = visibleMessages.lastOrNull()
+    // Tool cards change the height of a turn without changing a character of its text, so the
+    // signature has to count them too — otherwise the transcript stops following for exactly as
+    // long as the model spends calling tools, which is the part with nothing else to look at.
+    val tailSignature = listOf(
+        visibleMessages.size,
+        lastMessage?.content?.length,
+        lastMessage?.thinking?.length,
+        lastMessage?.toolInvocations?.size,
+        lastMessage?.toolInvocations?.count { it.isComplete },
+        lastMessage?.isStreaming,
+    )
+    LaunchedEffect(tailSignature) {
+        // Sending is itself a decision to be at the bottom — nobody types a message in order to
+        // carry on reading something further up — so a turn of your own takes following back.
+        // Checked here rather than in an effect of its own so it cannot race the scroll below.
+        if (lastMessage?.role == Role.USER) followTail = true
+
+        if (followTail && visibleMessages.isNotEmpty()) {
             // Not animate*: this restarts on every token, and a cancelled animation per token is
             // both wasted work and visibly jittery.
-            listState.scrollToItem(state.messages.lastIndex)
+            listState.scrollToTail(visibleMessages.lastIndex)
         }
     }
 
     // Searching moves the transcript; streaming must not fight it, which is why the follow-the-tail
     // effect above stands down whenever the reader has scrolled away from the bottom.
-    val visibleIds = state.messages
-        .filter { it.role == Role.USER || it.role == Role.ASSISTANT }
-        .map { it.id }
     LaunchedEffect(state.search.currentId, state.search.matchIds) {
         val target = state.search.currentId ?: return@LaunchedEffect
-        val index = visibleIds.indexOf(target)
+        val index = visibleMessages.indexOfFirst { it.id == target }
         if (index >= 0) listState.animateScrollToItem(index)
     }
 
@@ -412,9 +462,7 @@ fun ChatScreen(
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
                         items(
-                            items = state.messages.filter {
-                                it.role == Role.USER || it.role == Role.ASSISTANT
-                            },
+                            items = visibleMessages,
                             key = { it.id },
                         ) { message ->
                             MessageItem(
@@ -445,9 +493,12 @@ fun ChatScreen(
                     }
                 }
 
-                // The way back, now that scrolling up no longer gets overridden.
+                // The way back, now that scrolling up no longer gets overridden. Shown for the
+                // reader having left rather than for the end being off screen: during a long
+                // answer the end is off screen between one token and the next, and a button that
+                // appeared each time would blink at somebody who never moved.
                 AnimatedVisibility(
-                    visible = !isPinnedToBottom,
+                    visible = !followTail && !atBottom,
                     enter = fadeIn() + scaleIn(initialScale = 0.85f),
                     exit = fadeOut() + scaleOut(targetScale = 0.85f),
                     modifier = Modifier
@@ -457,8 +508,12 @@ fun ChatScreen(
                     JumpToLatestButton(
                         isGenerating = state.isGenerating,
                         onClick = {
+                            // Following resumes here rather than waiting for the scroll to settle:
+                            // the press *is* the reader saying they want the tail, and a streaming
+                            // answer would otherwise move the end away again before we arrived.
+                            followTail = true
                             scope.launch {
-                                listState.animateScrollToItem(state.messages.lastIndex)
+                                listState.scrollToTail(visibleMessages.lastIndex, animate = true)
                             }
                         },
                     )
@@ -518,6 +573,38 @@ fun ChatScreen(
         }
     }
 }
+
+/**
+ * Puts the *end* of the last message on screen, rather than its beginning.
+ *
+ * This is the whole of the jump-to-latest bug, and it is worth being precise about because the old
+ * code looked right. `scrollToItem` aligns an item's **top** with the top of the viewport, which is
+ * what you want for "go to message 12" and exactly wrong for "go to the bottom": on an answer
+ * longer than the screen — which is most answers worth jumping back to — it lands on the first line
+ * of the reply and leaves the rest below the fold, so the button appeared to do nothing, or worse,
+ * to jump somewhere arbitrary.
+ *
+ * So the scroll happens in two parts: get to the item, then consume whatever is still below it. The
+ * loop terminates because a lazy list clamps its scroll at the end of its content, so each pass
+ * either reaches the bottom or ends the loop by running out of scroll. The step count is the braces
+ * to that belt, and it is set high because the cost of a spare iteration is nothing and the cost of
+ * stopping short is the bug this function exists to fix.
+ */
+private suspend fun LazyListState.scrollToTail(index: Int, animate: Boolean = false) {
+    if (index < 0) return
+    if (animate) animateScrollToItem(index) else scrollToItem(index)
+
+    var steps = 0
+    while (canScrollForward && steps++ < MAX_TAIL_STEPS) {
+        val viewport = layoutInfo.viewportSize.height.toFloat()
+        if (viewport <= 0f) return
+        // Never animated, even when the jump was: an animation per viewport of a long answer is a
+        // second of scenery on the way to a destination the reader has already asked for.
+        scrollBy(viewport)
+    }
+}
+
+private const val MAX_TAIL_STEPS = 24
 
 /**
  * The find bar, in place of the title bar.

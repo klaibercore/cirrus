@@ -262,8 +262,17 @@ class SystemInfoTool @Inject constructor(
             }
             putJsonObject("cirrus") {
                 put("version", BuildConfig.VERSION_NAME)
-                put("workspace_files", workspace.entries().size)
+                put("workspace_files", workspace.entries().count { !it.isDirectory })
                 put("workspace_bytes", workspace.usedBytes())
+                // Which jobs already have scratch files, so a model resuming a conversation can
+                // reuse a topic rather than opening a second one for work it already started.
+                val topics = workspace.topics()
+                if (topics.isNotEmpty()) {
+                    put(
+                        "workspace_topics",
+                        topics.joinToString(" ") { "${it.name}(${it.fileCount})" },
+                    )
+                }
             }
             putJsonObject("shell") {
                 val present = CommandPolicy.allowedPrograms
