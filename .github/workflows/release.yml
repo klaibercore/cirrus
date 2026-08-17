@@ -4,22 +4,55 @@ on:
   push:
     tags: ['v*.*.*']
 
-# The job creates a release and uploads assets to it.
+# The publish job creates a release and uploads assets to it.
 permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build, sign and publish
+  # ------------------------------------------------------------------------------------------
+  # The tag is the single source of truth for the version, and both modules declare it
+  # separately. Checked once, up front, rather than in each build job: a mismatch should stop
+  # the release before anything spends forty minutes compiling.
+  # ------------------------------------------------------------------------------------------
+  version:
+    name: Check the tag matches both modules
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.check.outputs.version }}
 
     steps:
       - uses: actions/checkout@v7
-        with:
-          # Release notes are generated from the range since the previous tag,
-          # which needs the full history rather than a shallow clone.
-          fetch-depth: 0
+
+      - id: check
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+
+          android=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          if [ "$tag" != "$android" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match versionName $android in app/build.gradle.kts"
+            exit 1
+          fi
+
+          desktop=$(grep -oP 'packageVersion\s*=\s*"\K[^"]+' desktop/build.gradle.kts | head -1)
+          if [ "$tag" != "$desktop" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match packageVersion $desktop in desktop/build.gradle.kts"
+            exit 1
+          fi
+
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+  # ------------------------------------------------------------------------------------------
+  android:
+    name: Android — build and sign
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      version: ${{ needs.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -31,17 +64,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: true
-
-      - name: Check the tag matches the app version
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
-          declared=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
-          if [ "$tag" != "$declared" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match versionName $declared in app/build.gradle.kts"
-            exit 1
-          fi
-          echo "version=$tag" >> "$GITHUB_ENV"
 
       - name: Restore the keystore
         env:
@@ -73,7 +95,7 @@ jobs:
           "$apksigner" verify --print-certs --verbose \
             app/build/outputs/apk/release/app-release.apk
 
-      - name: Name the artifacts and checksum them
+      - name: Name the artifact and checksum it
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -82,6 +104,133 @@ jobs:
           cd dist
           sha256sum "cirrus-${version}-release.apk" > "cirrus-${version}-release.apk.sha256"
           cat "cirrus-${version}-release.apk.sha256"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-android
+          path: dist/
+          retention-days: 1
+
+  # ------------------------------------------------------------------------------------------
+  # `jpackage` produces a native installer and cannot cross-compile, so each package is built
+  # on the platform it targets. Both macOS architectures are built rather than only the runner
+  # default: a DMG bundles a JRE for one architecture, so an arm64-only build simply does not
+  # run on an Intel Mac.
+  # ------------------------------------------------------------------------------------------
+  desktop:
+    name: Desktop — ${{ matrix.label }}
+    needs: version
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      version: ${{ needs.version.outputs.version }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS (Apple Silicon)
+            task: packageDmg
+            suffix: macos-arm64
+            glob: 'desktop/build/compose/binaries/main/dmg/*.dmg'
+          - os: macos-13
+            label: macOS (Intel)
+            task: packageDmg
+            suffix: macos-x64
+            glob: 'desktop/build/compose/binaries/main/dmg/*.dmg'
+          - os: ubuntu-latest
+            label: Linux
+            task: packageDeb
+            suffix: linux-amd64
+            glob: 'desktop/build/compose/binaries/main/deb/*.deb'
+          - os: windows-latest
+            label: Windows
+            task: packageMsi
+            suffix: windows-x64
+            glob: 'desktop/build/compose/binaries/main/msi/*.msi'
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      # The desktop suite is the only place the shared domain layer is tested against a real
+      # shell and a real filesystem, so a red one should stop the release.
+      - name: Unit tests
+        run: ./gradlew :desktop:test --stacktrace
+
+      - name: Build the package
+        run: ./gradlew :desktop:${{ matrix.task }} --stacktrace
+
+      # Bash on every runner, Windows included, so the naming and checksums are one script
+      # rather than three. jpackage's own filenames differ per platform, hence the glob.
+      - name: Name the artifact and checksum it
+        shell: bash
+        run: |
+          set -euo pipefail
+          built=$(ls ${{ matrix.glob }} | head -1)
+          extension="${built##*.}"
+          mkdir -p dist
+          target="dist/cirrus-${version}-${{ matrix.suffix }}.${extension}"
+          cp "$built" "$target"
+          cd dist
+          name=$(basename "$target")
+          sha256sum "$name" > "$name.sha256"
+          cat "$name.sha256"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-desktop-${{ matrix.suffix }}
+          path: dist/
+          retention-days: 1
+
+  # ------------------------------------------------------------------------------------------
+  publish:
+    name: Publish the release
+    needs: [version, android, desktop]
+    runs-on: ubuntu-latest
+    env:
+      version: ${{ needs.version.outputs.version }}
+
+    steps:
+      # Release notes are generated from the range since the previous tag, which needs the full
+      # history rather than a shallow clone.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+
+      - name: Check everything arrived
+        run: |
+          set -euo pipefail
+          ls -l dist
+          for expected in \
+            "cirrus-${version}-release.apk" \
+            "cirrus-${version}-macos-arm64.dmg" \
+            "cirrus-${version}-macos-x64.dmg" \
+            "cirrus-${version}-linux-amd64.deb" \
+            "cirrus-${version}-windows-x64.msi"
+          do
+            if [ ! -f "dist/$expected" ]; then
+              echo "::error::$expected is missing — a build job produced nothing"
+              exit 1
+            fi
+          done
 
       - name: Generate release notes
         run: |
@@ -98,19 +247,34 @@ jobs:
               git log --no-merges --pretty='- %s (%h)' "${GITHUB_REF_NAME}"
             fi
             echo
+            echo "### Downloads"
+            echo
+            echo "| Platform | File |"
+            echo "|---|---|"
+            echo "| Android | \`cirrus-${version}-release.apk\` |"
+            echo "| macOS (Apple Silicon) | \`cirrus-${version}-macos-arm64.dmg\` |"
+            echo "| macOS (Intel) | \`cirrus-${version}-macos-x64.dmg\` |"
+            echo "| Linux | \`cirrus-${version}-linux-amd64.deb\` |"
+            echo "| Windows | \`cirrus-${version}-windows-x64.msi\` |"
+            echo
             echo "### Verify"
             echo
             echo '```'
             echo "sha256sum -c cirrus-${version}-release.apk.sha256"
             echo '```'
             echo
-            echo "Signing certificate fingerprints are printed in the build log under"
+            echo "The APK's signing certificate fingerprints are printed in the build log under"
             echo "\"Verify the APK is signed\"; they must match every prior release."
+            echo
+            echo "**The desktop packages are not code-signed.** macOS will refuse the first launch"
+            echo "(right-click → Open, or \`xattr -d com.apple.quarantine /Applications/Cirrus.app\`)"
+            echo "and Windows SmartScreen will warn. The checksum is the check that matters, and it"
+            echo "was produced by the same workflow run that built the package."
           } > release-notes.md
           cat release-notes.md
 
       # `gh` is preinstalled on the runner, so publishing needs no third-party action.
-      - name: Publish the release
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -118,5 +282,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "Cirrus ${version}" \
             --notes-file release-notes.md \
-            "dist/cirrus-${version}-release.apk" \
-            "dist/cirrus-${version}-release.apk.sha256"
+            dist/*
