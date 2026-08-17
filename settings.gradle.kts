@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Cirrus"
 include(":app")
+include(":desktop")

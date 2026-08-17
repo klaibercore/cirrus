@@ -15,8 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and test
+  android:
+    name: Android — build and test
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -65,4 +65,39 @@ jobs:
         with:
           name: cirrus-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+  desktop:
+    name: Desktop — build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Compile
+        run: ./gradlew :desktop:compileKotlin --stacktrace
+
+      # `ShellRunnerTest` drives a real /bin/sh, so this exercises the command policy and the
+      # process deadline against the runner's own shell rather than a stub.
+      - name: Unit tests
+        run: ./gradlew :desktop:test --stacktrace
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-test-results
+          path: desktop/build/reports/tests/test/
           retention-days: 14

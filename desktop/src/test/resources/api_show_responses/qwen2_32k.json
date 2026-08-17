@@ -1,0 +1,16 @@
+{
+  "details": {
+    "parent_model": "",
+    "format": "gguf",
+    "family": "qwen2",
+    "families": ["qwen2"],
+    "parameter_size": "7.6B",
+    "quantization_level": "Q4_0"
+  },
+  "model_info": {
+    "general.architecture": "qwen2",
+    "qwen2.context_length": 32768,
+    "qwen2.embedding_length": 3584
+  },
+  "capabilities": ["completion", "tools"]
+}

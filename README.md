@@ -2,14 +2,15 @@
 
 # ☁️ Cirrus
 
-**An Android [Ollama](https://ollama.com) client for developers who want their local models to
-actually do things.**
+**An [Ollama](https://ollama.com) client for developers who want their local models to actually do
+things. On Android, and on your desktop.**
 
 [![CI](https://github.com/klaibercore/cirrus/actions/workflows/ci.yml/badge.svg)](https://github.com/klaibercore/cirrus/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Kotlin](https://img.shields.io/badge/kotlin-2.3.21-7F52FF.svg?logo=kotlin&logoColor=white)](https://kotlinlang.org)
-[![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4.svg?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
-[![API](https://img.shields.io/badge/minSdk-29-3DDC84.svg?logo=android&logoColor=white)](https://developer.android.com)
+[![Compose](https://img.shields.io/badge/Compose-Multiplatform-4285F4.svg?logo=jetpackcompose&logoColor=white)](https://www.jetbrains.com/compose-multiplatform/)
+[![Android](https://img.shields.io/badge/Android-minSdk%2029-3DDC84.svg?logo=android&logoColor=white)](https://developer.android.com)
+[![Desktop](https://img.shields.io/badge/Desktop-macOS%20·%20Linux%20·%20Windows-111111.svg)](#install)
 
 </div>
 
@@ -22,15 +23,33 @@ actually do things.**
 &nbsp;
 [![Get it on GitHub](https://img.shields.io/badge/Get%20it%20on-GitHub%20Releases-24292f?logo=github&logoColor=white)](https://github.com/klaibercore/cirrus/releases)
 
+### Android
+
 - **[Obtainium](https://github.com/ImranR98/Obtainium)** — add
   `https://github.com/klaibercore/cirrus` and it tracks each release automatically. The
   recommended path.
 - **[GitHub Releases](https://github.com/klaibercore/cirrus/releases)** — signed APK with a
   `.sha256` beside it.
-- **F-Droid** — recipe written, *not yet submitted*: it needs a `v1.0.0` tag to build from. See
-  [Releasing](#releasing).
+- **F-Droid** — recipe written, submission pending. See [F-Droid](#f-droid).
 
-Or build it yourself — see [Building](#building).
+### Desktop
+
+Every release carries a package per platform, each with a `.sha256` beside it:
+
+| Platform | File | Notes |
+|---|---|---|
+| macOS | `Cirrus-<version>.dmg` | Unsigned and not notarized — see below |
+| Linux | `cirrus_<version>_amd64.deb` | `sudo apt install ./cirrus_<version>_amd64.deb` |
+| Windows | `Cirrus-<version>.msi` | Unsigned — SmartScreen will warn |
+
+> **On signing.** The Android APK is signed with a key whose fingerprint is identical across every
+> release. The desktop packages are **not** code-signed: an Apple Developer ID and an Authenticode
+> certificate are annual costs this project does not carry. macOS will refuse the first launch —
+> right-click → Open, or `xattr -d com.apple.quarantine /Applications/Cirrus.app` — and Windows
+> SmartScreen will warn. Verify the `.sha256` instead, and build it yourself if that is not good
+> enough for you. It is one command.
+
+Or build either yourself — see [Building](#building).
 
 ---
 
@@ -49,10 +68,10 @@ Or build it yourself — see [Building](#building).
 
 - Asks `/api/show` what each model can do, instead of guessing from names.
 - Reads and writes your GitHub — writes stay off until you allow them.
-- API keys encrypted with an Android Keystore key that never leaves.
+- The same app on your phone and your desktop, from one codebase.
 
-At more length: most mobile clients are a text box wrapped around `/api/chat`. Cirrus assumes you
-already know what a context window is, and gets out of your way.
+At more length: most clients are a text box wrapped around `/api/chat`. Cirrus assumes you already
+know what a context window is, and gets out of your way.
 
 - The **model picker knows what each model can do** — vision, reasoning, tools, context length —
   because it asks `/api/show` rather than guessing from the name.
@@ -61,7 +80,11 @@ already know what a context window is, and gets out of your way.
 - **Tools that matter.** Web search and page fetch, a full GitHub integration, Spotify, a
   sandboxed shell, the clock and calendar, your location, and any MCP server you attach — each one
   behind a switch, and everything that writes behind one more.
-- **Your secrets stay on the device**, encrypted with a key that never leaves the Android Keystore.
+- **Your secrets stay on the device.** On Android, encrypted with a key that never leaves the
+  Keystore. See [Privacy](#privacy) for what that means on the desktop, where there is no Keystore.
+- **One codebase, two platforms.** The turn protocol, the tool registry and its gates, the shell
+  policy and the design system are the same code. Only the platform edges differ, and
+  [the differences are written down](#platform-differences) rather than left to be discovered.
 
 ---
 
@@ -71,18 +94,18 @@ already know what a context window is, and gets out of your way.
 |---|---|
 | 🧠 **Capability-aware model picker** | Cards showing parameter count, quantization, on-disk size and context window, with labelled capability chips. Filter by vision, reasoning, tools, cloud or local. |
 | ⚡ **True token streaming** | NDJSON straight from `/api/chat`. Hit stop and the OkHttp call is cancelled, so the server stops generating too — no phantom token burn. |
-| 📵 **Answers finish without you** | Lock the phone or switch app mid-answer and the reply keeps streaming, in a foreground service you can stop from the notification. Switch threads and the one you left carries on. |
+| 📵 **Answers finish without you** | Switch threads or leave the screen mid-answer and the reply keeps streaming. On Android that means a foreground service you can stop from the notification; on the desktop the window simply is not the thing that owns the turn. |
 | 🤔 **Reasoning traces** | `thinking` deltas stream into a collapsible section, with effort control for models that support it. |
 | 🔧 **Tool calling** | Bounded multi-round tool loops. Web search, page fetch and the GitHub tools. Spend the round budget and the model is asked once more without tools, so a turn ends on an answer rather than on a call nobody ran. A turn's calls collapse into one line in the transcript — how many steps, which tools, how long — because provenance should not out-weigh the answer it belongs to. |
 | 🐙 **GitHub integration** | Read code in public *and* private repos, search, browse trees, read issues and PR diffs. Opening issues, commenting, posting reviews and committing files are behind a separate, default-off switch. |
 | 🔌 **MCP servers** | Attach any Model Context Protocol server and its tools join the model's set. Both HTTP transports (streamable and SSE), auto-detected, each server's token sent only to it. A short catalogue of known servers — GitHub, Spotify, Sentry, Linear — makes attaching one a tap rather than a URL to go and find. |
 | 🎵 **Spotify** | Search, your playlists and saved music, what is playing, playback control, and playlist edits. Signs in with OAuth/PKCE using a client ID you create, so no secret ships in the app. Playback control needs Premium — when Spotify refuses, Cirrus falls back to the phone's own media buttons, which work on any account and with any player. |
 | 🖥️ **A shell, safely** | Run commands on the phone for the small mechanical jobs. What may run is decided *before* anything does, from an allow list you can read in one sitting: no unlisted program, no absolute paths, no `..`, no `$(…)`, nothing that runs another program on the command's behalf. The working directory is a scratch folder in Cirrus's own cache, and it is the entire reachable world. Text to work on is piped to the command rather than quoted into it, files are grouped by the job they belong to, and idle jobs are cleared up without being asked. |
-| 🕰️ **The clock, the calendar, this phone** | A model has no clock, so left alone it answers "how long until Friday?" from the year it was trained in. It can now ask: the exact time in your zone, a month laid out, and what this device actually is — down to which shell programs this particular phone ships with. |
-| 📍 **Where you are** | For the weather, what is nearby, travel time. Coarse accuracy only, by design rather than as a fallback, and off until you turn it on. Never in the background, and never from a scheduled agent. |
+| 🕰️ **The clock, the calendar, this machine** | A model has no clock, so left alone it answers "how long until Friday?" from the year it was trained in. It can now ask: the exact time in your zone, a month laid out, and what this device actually is — down to which shell programs this particular machine ships with. |
+| 📍 **Where you are** *(Android)* | For the weather, what is nearby, travel time. Coarse accuracy only, by design rather than as a fallback, and off until you turn it on. Never in the background, and never from a scheduled agent. |
 | 🔐 **One switch for write actions** | Anything that changes something outside Cirrus and cannot be undone from inside it — a GitHub issue, a commit, a Spotify playlist, an MCP tool that has not declared itself read-only — is behind a single default-off switch. Reversible things, like pausing music, are not writes and stay available. |
 | 🧭 **The model knows its own settings** | Refused a tool because a switch is off, it is told *which* switch and where to find it, instead of concluding the app cannot do the thing at all and telling you so. |
-| 🎙️ **Voice dictation** | Speak into the composer with a live level meter. Prefers Android's on-device recogniser, so audio need never leave the phone. |
+| 🎙️ **Voice dictation** *(Android)* | Speak into the composer with a live level meter. Prefers Android's on-device recogniser, so audio need never leave the phone. |
 | ✍️ **Markdown that survives streaming** | A hand-written CommonMark subset tolerant of half-finished input, with a real lexer for syntax highlighting — not regex passes that mistake `//` inside a string for a comment. LaTeX maths is *typeset* — real fractions, radicals and stretched delimiters, laid out by TeX's rules in miniature — while still copying as text. |
 | 🏷️ **Self-maintaining titles** | Threads are named from their content and re-summarised as they grow, throttled so a long session costs a handful of short requests. Rename one yourself and it is never overwritten. |
 | 🌿 **Branch any conversation** | Fork from any message, edit-and-resend, regenerate, export to Markdown. |
@@ -90,6 +113,7 @@ already know what a context window is, and gets out of your way.
 | 🎨 **A design system, not a theme** | Monochrome by design, after ollama.com: hairline borders instead of shadows, a full pill on anything pressable, two radii, and a rounded display face over the platform's own body face. No dynamic colour — deriving a scheme from the wallpaper is precisely destructive of a design that committed to zero chroma. |
 | ⏰ **Agents that run without you** | A prompt on a schedule — a morning briefing, a Friday review, a nightly watch on something. Every attempt is recorded with its duration, tool calls and token count, so an agent that has been failing all week says so instead of showing you last Tuesday. Their answers are real threads you can read, branch and reply to, kept out of your conversation list until you do. |
 | 🚀 **A setup that proves itself** | A first-run wizard that walks from "where are your models?" to a working request, links out to create the key, and ends by offering an agent to start with. It can be skipped, and re-run later from Settings. |
+| 🖥️ **The same app on your desktop** | macOS, Linux and Windows, from the same codebase — the same turn protocol, the same tools, the same monochrome design system, laid out for a window rather than a phone. Conversations, agents and memory are per-install, not synced: nothing about Cirrus wants a server. |
 | 🔒 **No telemetry, ever** | No analytics, no crash reporter, no third-party backend. Every network destination is one you switched on yourself, and each has its own HTTP client so no service can ever be handed another's key. |
 
 ---
@@ -99,7 +123,9 @@ already know what a context window is, and gets out of your way.
 ```bash
 git clone https://github.com/klaibercore/cirrus.git
 cd cirrus
-./gradlew :app:installDebug
+
+./gradlew :app:installDebug           # onto a connected Android device
+./gradlew :desktop:run                # or just run it here
 ```
 
 On first launch a short wizard asks where your models are, tests the connection before it lets go,
@@ -108,10 +134,13 @@ setup again reopens it.
 
 Then point it at a host:
 
-**Using your own hardware** — no key needed:
+**Using your own hardware** — no key needed.
+
+On the desktop, if Ollama is running on the same machine, the default `http://localhost:11434`
+already works. For anything reaching it across a network — a phone, or another computer:
 
 ```bash
-OLLAMA_HOST=0.0.0.0 ollama serve      # so your phone can reach it
+OLLAMA_HOST=0.0.0.0 ollama serve      # so other devices can reach it
 ```
 
 Set the host in Settings to `http://<your-machine-ip>:11434`. From the Android emulator, use
@@ -160,23 +189,39 @@ Ask things like:
 >
 > *Review PR #12 — focus on error handling, don't approve it.*
 
-### MCP — not wired up yet
+### MCP servers
 
-Cirrus contains a [Model Context Protocol](https://modelcontextprotocol.io) client that speaks
-both HTTP transports: the current streamable-HTTP one and the older two-channel SSE one, chosen
-per server and auto-detected when a server answers with the SSE handshake. It does `initialize`,
-`tools/list` and `tools/call`, and it is covered by tests.
+Attach any [Model Context Protocol](https://modelcontextprotocol.io) server in Settings → MCP
+servers and its tools join the model's set for the turn.
 
-**There is no UI for it yet.** You cannot attach a server from Settings, nothing is persisted,
-and `ToolRegistry` does not offer MCP tools to the model. The client is finished; the wiring
-around it is not. Until that lands, treat MCP as a library inside the app rather than a feature
-of it — tracked as a follow-up to v1.0.0.
+Both HTTP transports are supported — the current streamable-HTTP one and the older two-channel
+SSE one — chosen per server and auto-detected when a server answers streamable-HTTP with the SSE
+handshake. Adding a server *probes* it first: Cirrus reaches it and lists its tools before it will
+let you save, because a URL that parses tells you nothing about whether attaching it would give
+you anything.
+
+Each server's token is sent only to that server. The MCP client has its own HTTP client that
+attaches no credential of its own, because an OkHttp interceptor's `header()` replaces whatever the
+request already carried — share a client between integrations and every attached server receives
+somebody else's token.
+
+> **MCP tools count as writes unless the server says otherwise.** `readOnlyHint` is an optional
+> annotation most servers do not send, and "nobody said it was destructive" is not evidence. Every
+> other tool here can be understood by reading it; an MCP tool is an arbitrary function on someone
+> else's server, described by a sentence that server wrote about itself. The cost is real — an
+> unannotated server offers nothing until **Allow write actions** is on — and it is the right side
+> to err on.
 
 ---
 
 ## Architecture
 
-Layered, with Hilt wiring it together. Dependencies point strictly inward.
+Two modules over one domain layer. `:app` is Android; `:desktop` is Compose Multiplatform for
+macOS, Linux and Windows. Everything from `ChatEngine` inwards is the same code — the turn
+protocol, the tool registry and its gates, the shell policy, the memory retriever, the markdown and
+maths stack, and the GitHub, Spotify and MCP integrations.
+
+Layered either way, dependencies pointing strictly inward.
 
 ```mermaid
 graph TD
@@ -190,27 +235,28 @@ graph TD
         Controller[TurnController<br/>owns turns in flight]
         Engine[ChatEngine<br/>the turn protocol]
         Registry[ToolRegistry]
-        Tools[WebSearch · WebFetch<br/>GitHub × 12]
+        Tools[WebSearch · WebFetch<br/>GitHub × 12 · Spotify · MCP<br/>shell · clock · memory]
     end
 
     subgraph data["data"]
         Ollama[OllamaClient<br/>NDJSON streaming]
         GitHub[GitHubClient<br/>REST v3]
-        Mcp[McpClient<br/>JSON-RPC · not yet wired]
-        Room[(Room<br/>conversations)]
-        Store[(DataStore<br/>Keystore-encrypted)]
+        Mcp[McpClient<br/>JSON-RPC · both transports]
+        Room[(Room · Android<br/>JsonStore · desktop)]
+        Store[(Settings + secrets)]
     end
 
     Chat --> Controller
     Controller --> Engine
     Controller --> Room
-    Service[GenerationService<br/>keeps the process awake] --> Controller
+    Service[GenerationService<br/>Android only] --> Controller
     Settings --> Store
     Picker --> Ollama
     Engine --> Registry
     Registry --> Tools
     Engine --> Ollama
     Tools --> GitHub
+    Tools --> Mcp
     Tools --> Ollama
     Chat --> Room
 
@@ -255,10 +301,37 @@ tested against a mock server rather than a device.
 
 ---
 
+## Platform differences
+
+The two builds are the same app, and where they are not, the reason is written down. The full
+account is in [CLAUDE.md](CLAUDE.md#the-desktop-build); the parts that change what you can do:
+
+| | Android | Desktop |
+|---|---|---|
+| **Secrets at rest** | DataStore, AES-GCM with a key that never leaves the Keystore | Cirrus's own data folder, **in the clear** — there is no Keystore to wrap them in |
+| **Conversations** | Room database, app-private | A JSON file per store, in the same folder |
+| **Scheduled agents** | WorkManager, so a missed 07:30 fires late | **Only run while Cirrus is open**; a missed window is skipped and the next one booked |
+| **Dictation** | On-device `SpeechRecognizer` | Not available — a bundled model would dwarf the app |
+| **Location** | Coarse, opt-in | Not available |
+| **Read aloud** | Android TTS, or ElevenLabs | `say` / `spd-say` / `espeak` / SAPI, or ElevenLabs |
+| **Media keys** | `media_control`, works with any player | Not available |
+| **Spotify sign-in** | `cirrus://` app link | Loopback redirect on `127.0.0.1:8888` |
+| **Packages** | Signed APK, stable fingerprint | Unsigned DMG / MSI / DEB — verify the checksum |
+
+Where a capability is absent it is absent *everywhere* — from the tool registry, from the settings
+catalogue, and from the descriptions the model reads. A switch the model can read about is a
+capability it will offer, and a tool named in a fallback message that does not exist is how a model
+ends up telling you your app cannot do something it shipped with.
+
+Data does not sync between installs. Nothing about Cirrus wants a server.
+
+---
+
 ## Releasing
 
-Every `vX.Y.Z` tag builds a signed APK and publishes it to the
-[Releases page](https://github.com/klaibercore/cirrus/releases) with a `.sha256` beside it.
+Every `vX.Y.Z` tag builds a signed APK and a desktop package for each platform, and publishes them
+to the [Releases page](https://github.com/klaibercore/cirrus/releases) with a `.sha256` beside
+each.
 
 [Obtainium](https://github.com/ImranR98/Obtainium) tracks those releases directly — add
 `https://github.com/klaibercore/cirrus` as an app and it updates itself from then on. Or download
@@ -267,20 +340,21 @@ the APK and install it by hand.
 Verify what you downloaded:
 
 ```bash
-sha256sum -c cirrus-1.0.0-release.apk.sha256
-apksigner verify --print-certs cirrus-1.0.0-release.apk
+sha256sum -c cirrus-1.7.0-release.apk.sha256          # or the desktop package's .sha256
+apksigner verify --print-certs cirrus-1.7.0-release.apk
 ```
 
-The certificate fingerprint is identical across every release. If it ever changes, the build did
-not come from here. [docs/RELEASING.md](docs/RELEASING.md) covers cutting one.
+The APK's certificate fingerprint is identical across every release. If it ever changes, the build
+did not come from here. The desktop packages are unsigned, so the checksum is the only check there
+is — and it is published from the same workflow run that built them.
+[docs/RELEASING.md](docs/RELEASING.md) covers cutting one.
 
 ### F-Droid
 
 The build recipe is written and kept in
 [klaibercore/fdroid-cirrus-metadata](https://github.com/klaibercore/fdroid-cirrus-metadata). It
-is **not submitted yet** — F-Droid builds from a tag, and `v1.0.0` has not been pushed. Once it
-is, the recipe goes to [fdroiddata](https://gitlab.com/fdroid/fdroiddata) as a merge request;
-this section will carry the link.
+is **not submitted yet**; once it goes to [fdroiddata](https://gitlab.com/fdroid/fdroiddata) as a
+merge request, this section will carry the link. F-Droid packages the Android build only.
 
 Note that F-Droid signs with its own key, so an F-Droid install and a GitHub Releases install
 cannot be upgraded into one another — pick one channel and stay on it.
@@ -289,6 +363,8 @@ cannot be upgraded into one another — pick one channel and stay on it.
 
 ## Building
 
+**Android** — requires **JDK 17** and the Android SDK for **API 37**:
+
 ```bash
 ./gradlew :app:assembleDebug          # debug APK
 ./gradlew :app:testDebugUnitTest      # JVM unit tests
@@ -296,10 +372,20 @@ cannot be upgraded into one another — pick one channel and stay on it.
 ./gradlew :app:installDebug           # onto a connected device
 ```
 
-Requires **JDK 17** and the Android SDK for **API 37**. `compileSdk`/`targetSdk` 37, `minSdk` 29.
+**Desktop** — requires **JDK 17** and nothing else:
 
-AGP 9 ships built-in Kotlin support; the root `buildscript` raises KGP to 2.3.21. Compose, KSP and
-the serialization plugin must all track that same release — see `gradle/libs.versions.toml`.
+```bash
+./gradlew :desktop:run                # launch it
+./gradlew :desktop:test               # JVM unit tests
+./gradlew :desktop:packageDmg         # or packageMsi / packageDeb
+```
+
+Each desktop package can only be built on its own platform — `jpackage` produces a native installer
+and cannot cross-compile — which is why the release workflow runs a job per OS.
+
+`compileSdk`/`targetSdk` 37, `minSdk` 29. AGP 9 ships built-in Kotlin support; the root
+`buildscript` raises KGP to 2.3.21. Compose, KSP and the serialization plugin must all track that
+same release — see `gradle/libs.versions.toml`.
 
 ---
 
@@ -317,20 +403,34 @@ Each has its own HTTP client, so a credential can never travel to a service it w
 the interceptor that attaches your GitHub token exists on the GitHub client alone, and MCP servers
 get a client that attaches nothing of its own.
 
-Nothing else leaves the phone. The shell runs in a scratch folder inside Cirrus's cache and cannot
-reach out; the clock, calendar, device summary, media controls and memory are entirely local; and
-location is read only when a tool asks for it, at coarse accuracy, never in the background.
+Nothing else leaves the device. The shell runs in a scratch folder inside Cirrus's own storage and
+cannot reach out; the clock, calendar, device summary and memory are entirely local.
 
-Your API key, GitHub token, ElevenLabs key and Spotify tokens are stored in DataStore, encrypted
-with AES-GCM using a key generated in and never released from the Android Keystore. Conversations, messages and attachments
-live in an app-private Room database and are never uploaded.
+**Secrets at rest differ by platform, and the difference is real.**
 
-The permissions are `INTERNET`, plus `FOREGROUND_SERVICE`/`FOREGROUND_SERVICE_DATA_SYNC` and
-`WAKE_LOCK` — which is how a reply keeps streaming after you leave the screen, and which are used
-only while one is. `POST_NOTIFICATIONS` is asked for at your first generation, and only buys the
-notification that shows it running; `RECORD_AUDIO` is requested the first time you tap the
-microphone, and `ACCESS_COARSE_LOCATION` when you turn Location on. There is deliberately no
-background-location permission.
+On **Android**, your API key, GitHub token, ElevenLabs key and Spotify tokens are stored in
+DataStore, encrypted with AES-GCM using a key generated in and never released from the Keystore.
+Conversations, messages and attachments live in an app-private Room database.
+
+On the **desktop** there is no Keystore, and Cirrus does not pretend otherwise: secrets sit in
+plain JSON in the application data folder, protected by nothing but the file permissions your
+account already has. Anything that can read your files can read your Ollama key. The onboarding
+wizard says so at the point you paste one. If that is not acceptable for your threat model, use the
+Android build, or run against a local Ollama that needs no key at all.
+
+| Platform | Location |
+|---|---|
+| macOS | `~/Library/Application Support/Cirrus/` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/cirrus/` |
+| Windows | `%APPDATA%\Cirrus\` |
+
+The **Android permissions** are `INTERNET`, plus
+`FOREGROUND_SERVICE`/`FOREGROUND_SERVICE_DATA_SYNC` and `WAKE_LOCK` — which is how a reply keeps
+streaming after you leave the screen, and which are used only while one is. `POST_NOTIFICATIONS` is
+asked for at your first generation, and only buys the notification that shows it running;
+`RECORD_AUDIO` is requested the first time you tap the microphone, and `ACCESS_COARSE_LOCATION`
+when you turn Location on. There is deliberately no background-location permission. The desktop
+build asks for nothing: it has no dictation, no location, and its notifications are a tray icon.
 
 There is no analytics SDK, no crash reporter, and no telemetry of any kind. See
 [SECURITY.md](SECURITY.md) for the full threat model.
@@ -353,5 +453,5 @@ Participation is governed by the [Contributor Covenant](CODE_OF_CONDUCT.md).
 Cirrus is an independent project and is not affiliated with or endorsed by Ollama or GitHub.
 
 <div align="center">
-<sub>Built with Kotlin, Jetpack Compose and a lot of opinions about context windows.</sub>
+<sub>Built with Kotlin, Compose Multiplatform and a lot of opinions about context windows.</sub>
 </div>

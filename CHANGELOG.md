@@ -7,7 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Cirrus runs on the desktop.** A Compose Multiplatform build for macOS, Linux and Windows, from
+  the same codebase as the Android app. Everything from `ChatEngine` inwards is the same code — the
+  turn protocol, the tool registry and every gate on it, the shell policy, the memory retriever, the
+  markdown and typeset maths, and the GitHub, Spotify and MCP integrations — so the two builds
+  cannot drift in the parts that decide what the model may do.
+
+  The platform edges are replaced rather than approximated. Persistence is a JSON file per store
+  instead of Room and DataStore; the dependency graph is wired by hand instead of by Hilt; screen
+  state is a plain class scoped to the composition instead of a `ViewModel`, since a window has no
+  back stack for one to survive; and the schedulers are coroutines that sleep until due instead of
+  WorkManager requests. Read-aloud plays raw PCM through `javax.sound.sampled`, because the JVM
+  decodes no MP3 and shipping a decoder to avoid asking ElevenLabs for PCM would be the wrong trade.
+  Spotify signs in over a loopback redirect, since a desktop app cannot claim a URI scheme.
+
+  Three things do not come across, and are absent from the settings catalogue as well as the tool
+  registry so the model is never told about a capability it does not have: dictation, location, and
+  `media_control`.
+
+  One behaviour genuinely differs and cannot not: **scheduled agents only run while Cirrus is
+  open.** WorkManager persists its queue, so a sleeping phone fires a missed 07:30 late; a desktop
+  app that was not running missed it, and the next occurrence is booked instead.
+
+  The desktop build carries its own test suite — 416 tests — and CI now runs it on every pull
+  request.
+
+### Changed
+
+- Releases now carry a package per desktop platform alongside the signed APK, each with a `.sha256`
+  beside it. The desktop packages are **not** code-signed; the checksum is the integrity check.
 
 ## [1.6.0] - 2026-08-15
 
