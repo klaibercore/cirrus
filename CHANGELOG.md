@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.7.0] - 2026-08-17
+
 ### Added
 
 - **Cirrus runs on the desktop.** A Compose Multiplatform build for macOS, Linux and Windows, from
