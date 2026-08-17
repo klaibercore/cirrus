@@ -141,7 +141,7 @@ class SuggestionGenerator @Inject constructor(
         val model = current.defaultModel.takeIf { it.isNotBlank() } ?: return emptyList()
         val raw = engine.complete(
             model = model,
-            system = "You design scheduled prompts for a phone assistant: a prompt that runs at a " +
+            system = "You design scheduled prompts for a desktop assistant: a prompt that runs at a " +
                 "set time with nobody watching, and whose answer arrives as a notification. Reply " +
                 "with JSON only: an array of four objects with \"name\" (two or three words), " +
                 "\"summary\" (one short line), \"prompt\", \"hour\" (0-23), \"minute\" (0-59) and " +
@@ -198,15 +198,15 @@ class SuggestionGenerator @Inject constructor(
         }
         if (current.shellToolsEnabled) {
             add(
-                "Tell the exact date and time, lay out a calendar month, describe this phone, " +
+                "Tell the exact date and time, lay out a calendar month, describe this computer, " +
                     "and run safe shell commands in a private scratch folder.",
             )
         }
         if (current.appControlEnabled) {
-            add("List the apps installed on the phone and open one.")
+            add("List the applications installed on this computer and open one.")
         }
         if (current.notificationToolEnabled) {
-            add("Send a notification to the phone.")
+            add("Put a notification on the desktop notification tray.")
         }
     }
 

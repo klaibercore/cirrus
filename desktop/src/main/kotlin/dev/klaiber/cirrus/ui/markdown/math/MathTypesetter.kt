@@ -40,7 +40,7 @@ internal class MathTypesetter(
     val axis: Float get() = baseSize * AXIS
 
     private data class Style(val size: Float, val display: Boolean) {
-        /** Scripts shrink, but only so far: below this they stop being legible on a phone. */
+        /** Scripts shrink, but only so far: below this they stop being legible at reading size. */
         fun script(): Style = Style(max(size * SCRIPT_SCALE, MIN_SCRIPT_SIZE_PX), false)
     }
 

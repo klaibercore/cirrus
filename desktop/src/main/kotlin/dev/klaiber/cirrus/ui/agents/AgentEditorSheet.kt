@@ -305,7 +305,7 @@ internal fun ToggleRow(
     }
 }
 
-/** 08:00 — early enough to be waiting for you, late enough that the phone has a network. */
+/** 08:00 — early enough to be waiting for you, late enough that the machine is likely awake. */
 internal const val DEFAULT_MINUTE = 8 * 60
 private const val MAX_MODEL_CHIPS = 6
 private val KEEP_CHOICES = listOf(3, 10, 30)

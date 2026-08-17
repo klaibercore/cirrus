@@ -50,15 +50,16 @@ abstract class SpotifyTool(
         // The single most common failure, and the one where a bare error is least useful: the
         // account is not Premium, and there is a way through that does not involve one.
         errorJson(
-            "${forbidden.message} If this was a playback command, media_control can still " +
-                "play, pause, skip and set the volume on this phone — it uses Android's own media " +
-                "buttons and needs no Premium. It is behind Settings → Tools → Apps and media.",
+            "${forbidden.message} Playback control is the only part of Spotify that needs " +
+                "Premium: search, the library and what-is-playing all work on a free account. " +
+                "Say that rather than reporting a failure — and offer to open the track in the " +
+                "Spotify app instead, which needs no subscription.",
         )
     } catch (device: SpotifyException.NoActiveDevice) {
         errorJson(
             "${device.message} Call spotify_library with kind \"devices\" to see what is " +
-                "available, then use spotify_playback with a device_id — or use media_control to " +
-                "drive whatever is already playing on this phone.",
+                "available, then use spotify_playback with a device_id. If nothing is listed, " +
+                "Spotify is not open anywhere — say so rather than retrying.",
         )
     } catch (limited: SpotifyException.RateLimited) {
         errorJson(limited.message ?: "Spotify is rate-limiting.")
@@ -334,10 +335,9 @@ class SpotifyPlaybackTool @Inject constructor(
         name = name,
         description = "Control what Spotify is playing: start something, pause, skip, queue a " +
             "track, set the volume, shuffle, or move playback to another device. Needs Spotify " +
-            "Premium — the Web API refuses playback control on free accounts, and if that " +
-            "happens use media_control instead, which drives this phone's own media buttons and " +
-            "needs no subscription. Get a `uri` from spotify_search first; \"play\" with no uri " +
-            "resumes whatever was paused.",
+            "Premium — the Web API refuses playback control on free accounts, and there is no " +
+            "media-key fallback on this build. Get a `uri` from spotify_search first; \"play\" " +
+            "with no uri resumes whatever was paused.",
         required = listOf("action"),
     ) {
         enumParam(

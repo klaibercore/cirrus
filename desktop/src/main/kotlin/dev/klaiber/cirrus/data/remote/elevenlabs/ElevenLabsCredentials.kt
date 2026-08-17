@@ -6,8 +6,8 @@ import javax.inject.Singleton
 /**
  * Snapshot of the ElevenLabs key that OkHttp needs synchronously.
  *
- * Mirrors [dev.klaiber.cirrus.data.remote.github.GitHubCredentials]: the key is persisted
- * encrypted in DataStore behind suspending reads, and an interceptor cannot suspend.
+ * Mirrors [dev.klaiber.cirrus.data.remote.github.GitHubCredentials]: the key is persisted behind
+ * a suspending read, and an interceptor cannot suspend.
  */
 @Singleton
 class ElevenLabsCredentials @Inject constructor() {

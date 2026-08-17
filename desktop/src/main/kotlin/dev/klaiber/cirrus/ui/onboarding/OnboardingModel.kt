@@ -270,5 +270,11 @@ class OnboardingModel(
     }
 }
 
-/** A phone cannot reach `localhost`; the machine running Ollama has an address on the network. */
-const val DEFAULT_LOCAL_URL = "http://192.168.1.10:11434"
+/**
+ * Ollama's own default, and on a desktop it is usually right.
+ *
+ * The Android build cannot suggest this — `localhost` on a phone is the phone — so it offers a
+ * LAN address to be edited. Here the common case is Ollama running on the same machine, so the
+ * field is pre-filled with something that works rather than something that has to be corrected.
+ */
+const val DEFAULT_LOCAL_URL = "http://localhost:11434"

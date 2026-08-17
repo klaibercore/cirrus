@@ -224,7 +224,7 @@ private fun WelcomeStep() {
     )
     Spacer(Modifier.height(8.dp))
     Text(
-        text = "A chat client for Ollama, on your phone.",
+        text = "A chat client for Ollama, on your desktop.",
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
@@ -322,8 +322,8 @@ private fun HostStep(state: OnboardingUiState, model: OnboardingModel) {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Your phone cannot reach \"localhost\" — that would be the phone itself. Use " +
-                "the computer's address on your network, and start Ollama with " +
+            text = "If Ollama is running on this computer, the default above is right. For " +
+                "Ollama on another machine, use its address on your network and start it with " +
                 "OLLAMA_HOST=0.0.0.0 so it accepts connections from other devices.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -344,7 +344,8 @@ private fun KeyStep(state: OnboardingUiState, model: OnboardingModel) {
     StepHeader(
         title = "Your Ollama key",
         body = "Sign in at ollama.com, create a key, and paste it here. It is stored on this " +
-            "device only, encrypted with a key that never leaves the phone.",
+            "computer only, in Cirrus's own data folder. Unlike the Android build there is no " +
+            "Keystore to encrypt it with, so anything that can read your files can read the key.",
     )
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -589,7 +590,7 @@ private fun ExtrasStep(state: OnboardingUiState, model: OnboardingModel) {
     Text("Read answers aloud", style = MaterialTheme.typography.titleSmall)
     Spacer(Modifier.height(4.dp))
     Text(
-        text = "Android's own voice works with no key at all. An ElevenLabs key buys a better " +
+        text = "This computer's own voice works with no key at all. An ElevenLabs key buys a better " +
             "one, and is worth skipping unless you already have it.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
