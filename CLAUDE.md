@@ -1,9 +1,14 @@
-# Cirrus — Android Ollama chat client
+# Cirrus — an Ollama chat client for Android and the desktop
 
-Native Android (Kotlin + Jetpack Compose) client for [Ollama](https://ollama.com). Talks to
-either a local Ollama instance or the hosted cloud API over HTTP, streams responses token by
-token, renders markdown with syntax-highlighted code blocks, and calls tools — web search, a
-GitHub integration, and any MCP server the user attaches.
+Kotlin + Compose client for [Ollama](https://ollama.com). Talks to either a local Ollama instance
+or the hosted cloud API over HTTP, streams responses token by token, renders markdown with
+syntax-highlighted code blocks, and calls tools — web search, a GitHub integration, and any MCP
+server the user attaches.
+
+Two modules ship it. `:app` is the Android build and is what the rest of this file describes.
+`:desktop` is the Compose Multiplatform build for macOS, Linux and Windows — the same domain
+layer, the same tools and the same design system, with the platform pieces replaced. See
+[The desktop build](#the-desktop-build) for what differs and why.
 
 ## Build & test
 
@@ -12,6 +17,10 @@ GitHub integration, and any MCP server the user attaches.
 ./gradlew :app:testDebugUnitTest      # run the JVM unit test suite
 ./gradlew :app:lintDebug              # Android lint
 ./gradlew :app:installDebug           # install on a connected device/emulator
+
+./gradlew :desktop:run                # launch the desktop app
+./gradlew :desktop:test               # its own JVM test suite
+./gradlew :desktop:packageDmg         # or packageMsi / packageDeb
 ```
 
 - `compileSdk`/`targetSdk` 37, `minSdk` 29, JVM target 17.
@@ -384,6 +393,66 @@ Unit tests live in `app/src/test/java/...` mirroring the main package. Run with
 - Compose text APIs used in tests (`getLinkAnnotations`) are `@ExperimentalTextApi`; call them
   by their Java getter name and opt in at the class level.
 - `SecretCipher` and Room DAOs need Android runtime APIs and are not covered by JVM tests.
+
+## The desktop build
+
+`:desktop` is the same app on Compose Multiplatform. Everything from `ChatEngine` inwards is a
+straight copy — the turn protocol, the tool registry and its gates, the shell policy, the memory
+retriever, the markdown and maths stack, the GitHub, Spotify and MCP integrations. What changed is
+only what had to, and each substitution is worth knowing about because the reason is rarely
+"the API is called something else".
+
+**No Hilt, no Room, no DataStore, no Keystore.** `AppContainer` is the graph, wired by hand: it is
+small and fixed, and an explicit list is easier to audit than an injected set when the question is
+"which of these can do something?". `JsonStore` is persistence — one file per store, written
+through a temp sibling so a crash mid-write never leaves half a file, with a `Mutex` because a turn
+can finalise a message at the same moment the user renames the thread it belongs to. Secrets sit in
+Cirrus's own data folder in the clear; there is no Keystore to wrap them in, and the onboarding
+wizard says so rather than promising an envelope this build does not have.
+
+**No ViewModels.** Android gives each conversation its own back-stack entry and therefore its own
+ViewModel, which is what that class buys there: state that survives a screen going away. A window
+has no back stack, so the equivalent lifetime is the composition, and each screen's state is a
+plain class remembered in it (`ChatModel`, `ConversationsModel`, …) taking a scope. Turns still run
+on the application scope via `TurnController` — nothing in the UI starts one. Routing is a list of
+`Screen`s rather than a `NavHost`, since a window has no process death to survive and no deep links
+to route.
+
+**No WorkManager.** `AgentScheduler` and `ConsolidationScheduler` are coroutines that sleep until
+due, run, and book the next occurrence — the same shape as the one-shot-that-re-books-itself they
+replace, and for the same reason: periodic work drifts against the wall clock and "07:30 on
+weekdays" is the whole feature. The re-booking sits in a `finally` so one bad morning cannot
+unschedule an agent. **The behavioural difference that cannot be avoided: agents only run while
+Cirrus is open.** WorkManager persists its queue, so a sleeping phone fires a missed 07:30 late; a
+desktop app that was not running missed it, and the next occurrence is booked instead. Firing a
+fortnight of stale briefings at launch would be worse than skipping them.
+
+**Read-aloud is PCM, not MP3.** The JVM decodes no MP3 at all, so rather than ship a decoder the
+ElevenLabs client asks for raw PCM and `javax.sound.sampled` plays it directly against a format that
+is known and fixed. `SystemVoice` replaces `TextToSpeech` and drives whatever the desktop has —
+`say`, `spd-say`, `espeak`, or SAPI through PowerShell. Text goes in on **stdin**, never on the
+command line: an answer read aloud is arbitrary model output, and one containing a quote or a `$(`
+would otherwise be assembled into a command.
+
+**Spotify signs in over loopback.** A desktop app cannot claim the `cirrus://` scheme without
+writing itself into the system's handler table, so the redirect is `http://127.0.0.1:8888/…`,
+served by a JDK `HttpServer` up only for the length of one sign-in. The port is fixed because
+Spotify matches the redirect character for character. The PKCE verifier is held in memory rather
+than persisted — the listener that consumes it is in this same process.
+
+**What is deliberately absent.** Dictation (`SpeechRecognizer` has no counterpart worth shipping, and
+a bundled model would dwarf the app), location, and `media_control`. All three are gone from the
+settings catalogue as well as from the tool registry, because a switch the model can read about is a
+capability it will offer — and a tool named in a fallback message that does not exist is exactly the
+"this app cannot do that" versus "not until somebody flips a switch" confusion `explainRefusal` is
+there to prevent. `GenerationService` is not ported either: nothing freezes a desktop process
+mid-stream.
+
+**Settings is one scrolling page**, not Android's list of sub-screens — a 1180pt window can show it,
+and a phone's navigation pattern here would be a worse app. `SettingsSection` still exists and
+`SettingsCatalogTest` still asserts that every `SettingSwitch.path` names a section that does.
+
+The test suite came across with the code: 416 tests across 36 classes, run with `:desktop:test`.
 
 ## Gotchas
 
