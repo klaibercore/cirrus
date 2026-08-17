@@ -38,9 +38,13 @@ Every release carries a package per platform, each with a `.sha256` beside it:
 
 | Platform | File | Notes |
 |---|---|---|
-| macOS | `Cirrus-<version>.dmg` | Unsigned and not notarized — see below |
-| Linux | `cirrus_<version>_amd64.deb` | `sudo apt install ./cirrus_<version>_amd64.deb` |
-| Windows | `Cirrus-<version>.msi` | Unsigned — SmartScreen will warn |
+| macOS | `cirrus-<version>-macos-arm64.dmg` | Apple Silicon only; unsigned and not notarized — see below |
+| Linux | `cirrus-<version>-linux-amd64.deb` | `sudo apt install ./cirrus-<version>-linux-amd64.deb` |
+| Windows | `cirrus-<version>-windows-x64.msi` | Unsigned — SmartScreen will warn |
+
+> **Intel Macs.** There is no prebuilt package: GitHub has retired its Intel macOS runners, and a
+> DMG bundles a JRE for one architecture, so the Apple Silicon build genuinely will not run. Build
+> it yourself with `./gradlew :desktop:packageDmg` on the machine — it needs only a JDK 17.
 
 > **On signing.** The Android APK is signed with a key whose fingerprint is identical across every
 > release. The desktop packages are **not** code-signed: an Apple Developer ID and an Authenticode

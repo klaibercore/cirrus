@@ -25,9 +25,13 @@ The `.sha256` beside each package is therefore the only integrity check there is
 produced in the same workflow run that built the package. If you ever do buy certificates, the
 signing steps belong in the `desktop` matrix job, before the artifact is named.
 
-`jpackage` cannot cross-compile, which is why that job runs once per platform. Both macOS
-architectures are built: a DMG bundles a JRE for one architecture, so an arm64-only build does not
-run on an Intel Mac at all.
+`jpackage` cannot cross-compile, which is why that job runs once per platform.
+
+macOS is **Apple Silicon only**. A DMG bundles a JRE for one architecture, so the arm64 build does
+not run on an Intel Mac — but GitHub has retired the `macos-13` Intel image, and a matrix entry
+asking for it queues forever without ever failing, which is worse than not offering it. Adding
+Intel back means a self-hosted runner. Until then the README tells Intel users to build from
+source, which needs only a JDK 17.
 
 ## The signing key
 

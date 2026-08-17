@@ -113,9 +113,12 @@ jobs:
 
   # ------------------------------------------------------------------------------------------
   # `jpackage` produces a native installer and cannot cross-compile, so each package is built
-  # on the platform it targets. Both macOS architectures are built rather than only the runner
-  # default: a DMG bundles a JRE for one architecture, so an arm64-only build simply does not
-  # run on an Intel Mac.
+  # on the platform it targets.
+  #
+  # macOS is Apple Silicon only. A DMG bundles a JRE for one architecture, so this genuinely does
+  # not run on an Intel Mac — but GitHub has retired the `macos-13` Intel image, and a job asking
+  # for it simply queues forever rather than failing. Intel would need a self-hosted runner; until
+  # there is one, the README says arm64 and an Intel user is pointed at building from source.
   # ------------------------------------------------------------------------------------------
   desktop:
     name: Desktop — ${{ matrix.label }}
@@ -133,11 +136,6 @@ jobs:
             label: macOS (Apple Silicon)
             task: packageDmg
             suffix: macos-arm64
-            glob: 'desktop/build/compose/binaries/main/dmg/*.dmg'
-          - os: macos-13
-            label: macOS (Intel)
-            task: packageDmg
-            suffix: macos-x64
             glob: 'desktop/build/compose/binaries/main/dmg/*.dmg'
           - os: ubuntu-latest
             label: Linux
@@ -222,7 +220,6 @@ jobs:
           for expected in \
             "cirrus-${version}-release.apk" \
             "cirrus-${version}-macos-arm64.dmg" \
-            "cirrus-${version}-macos-x64.dmg" \
             "cirrus-${version}-linux-amd64.deb" \
             "cirrus-${version}-windows-x64.msi"
           do
@@ -253,7 +250,6 @@ jobs:
             echo "|---|---|"
             echo "| Android | \`cirrus-${version}-release.apk\` |"
             echo "| macOS (Apple Silicon) | \`cirrus-${version}-macos-arm64.dmg\` |"
-            echo "| macOS (Intel) | \`cirrus-${version}-macos-x64.dmg\` |"
             echo "| Linux | \`cirrus-${version}-linux-amd64.deb\` |"
             echo "| Windows | \`cirrus-${version}-windows-x64.msi\` |"
             echo
