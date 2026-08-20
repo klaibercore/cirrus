@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-        The pre-Compose launch window, and the launcher icon's plate. Both are literal steps on the
-        neutral ramp in ui/theme/Color.kt: the launch background is `surface` so the window that
-        appears before Compose is running is indistinguishable from the one that replaces it, and
-        any drift between the two shows up as a flash on every cold start.
+        The pre-Compose launch window. A literal step on the neutral ramp in ui/theme/Color.kt:
+        `surface`, so the window that appears before Compose is running is indistinguishable from
+        the one that replaces it, and any drift between the two shows up as a flash on every cold
+        start.
+
+        The launcher icon's plate is no longer here. It became a gradient with the new mark, and a
+        gradient is a drawable — see drawable/ic_launcher_background.xml.
     -->
     <color name="launch_background">#FFFFFF</color>
-    <!-- The icon's plate: pale, with the ink cloud on top. See ic_launcher_foreground.xml. -->
-    <color name="ic_launcher_background">#FAFAFA</color>
 </resources>

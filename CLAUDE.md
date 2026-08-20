@@ -49,7 +49,8 @@ app/src/main/java/dev/klaiber/cirrus/
 │   ├── onboarding/         # OnboardingScreen + OnboardingViewModel — the first-run wizard
 │   ├── settings/           # SettingsScreen + SettingsViewModel
 │   │   └── mcp/            # McpServersScreen, McpServerEditorSheet (probe), McpViewModel
-│   ├── components/         # HelpTooltip / HelpBadge, shared across screens
+│   ├── components/         # Primitives, HelpTooltip / HelpBadge, CirrusMark (the mark +
+│   │                       #   the working indicator), shared across screens
 │   ├── voice/              # VoiceInput — SpeechRecognizer hoisted into Compose state
 │   ├── markdown/           # MarkdownParser, MarkdownInline, SyntaxHighlighter, CodeBlock
 │   │   └── math/           # LaTeX: MathParser → MathTypesetter → MathBox, plus MathSpeech
@@ -289,8 +290,25 @@ rules, and holding to them is what keeps the app looking like one thing.
   default tracking on small labels is a surprising amount of why an interface reads as Android
   rather than as the thing being copied.
 
+- **The mark carries three accents, and the page still carries none.** `CirrusAccents` is a
+  vocabulary for the one part of the interface that is not prose: `brand` is structure (the braces
+  of the mark, and a hyperlink), `contrast` is content (the sweeps), `ember` is electricity and
+  only ever that — tokens arriving, a tool out there running — and `signal` is its opposite,
+  connected and resolved. Reach for `LocalAccents` when something means one of those four things
+  and for nothing else; a control tinted `brand` because blue is nice undoes the position the
+  neutral ramp exists to hold.
+
 Shared parts live in `ui/components/Primitives.kt` (`OutlinedPanel`, `PillButton`, `Tag`,
-`Hairline`). Assemble a screen from those rather than styling a `Surface` by hand.
+`Hairline`) and `ui/components/CirrusMark.kt` (`CirrusMark`, `CirrusActivity`). Assemble a screen
+from those rather than styling a `Surface` by hand.
+
+**The mark itself** is three sweeps inside a pair of braces: what comes through the API, and the
+API it comes through. Everything in it is one primitive — a curve rising to the right, ending in a
+round cap, slope between −0.25 and −0.40, never mirrored. `design/cirrus-icons.svg` is the source
+of the geometry and the record of what was corrected in it. `CirrusActivity` is the same mark doing
+work, and it replaced a pulsing dot: a dot on a timer says only "not finished yet", where sweeps
+streaking left to right at three coprime rates say that *and* whose app is saying it, with the
+colour distinguishing a model still thinking (cool) from something actually drawing power (amber).
 
 ### Agents keep their own threads
 
@@ -448,6 +466,12 @@ capability it will offer — and a tool named in a fallback message that does no
 there to prevent. `GenerationService` is not ported either: nothing freezes a desktop process
 mid-stream.
 
+**The app icon is rendered, not shipped.** `CirrusAppIcon.kt` draws the mark into an `ImageBitmap`
+for the window (which is also the dock and the taskbar) and into a `BufferedImage` for the tray,
+both from the same `CirrusMarkGeometry` the composables use. The alternative is an `.icns`, an
+`.ico` and a `.png` of one drawing, three files that go out of agreement the first time one of them
+is regenerated and the others are not — the tray icon had already given up and drawn a dark square.
+
 **Settings is one scrolling page**, not Android's list of sub-screens — a 1180pt window can show it,
 and a phone's navigation pattern here would be a worse app. `SettingsSection` still exists and
 `SettingsCatalogTest` still asserts that every `SettingSwitch.path` names a section that does.
@@ -545,13 +569,21 @@ The test suite came across with the code: 416 tests across 36 classes, run with 
 - Compose's `PlaceholderVerticalAlign.AboveBaseline` puts the *bottom* of an inline placeholder on
   the text baseline, so anything with a descender hangs below the line. Inline maths is made
   symmetric about the maths axis and aligned with `TextCenter` instead.
-- The launcher icon is a union of three discs over a stadium base, not a traced outline, because
-  the union keeps its bumps even at 48dp. A stroked outline was tried — closer to the reference's
-  drawn mascot — and abandoned: eroding a union of discs to cut the inner counter leaves ink
-  slivers wherever two discs meet shallowly. `ic_notification.xml` shares the same viewport and
-  path data on purpose; the two had already drifted into different shapes once.
-- The billows of the launcher icon are deliberately narrower than its base. Lining their outer
-  edges up exactly puts a visible dent in each side of the cloud where the two arcs cross.
+- **The mark is one drawing quoted in four places.** `design/cirrus-icons.svg` is the source; the
+  launcher vector, the notification mask, `ui/components/CirrusMark.kt` and the desktop's
+  `CirrusAppIcon.kt` all restate the same coordinates on the same 24-unit grid rather than
+  re-tracing them. The launcher and the status bar had already drifted into two different clouds
+  once, back when each was drawn by hand, which is what the quoting is there to prevent.
+- **Below 28dp the braces are dropped**, and 28 is measured rather than assumed — the design system
+  says 20, and against a real pixel grid the braced mark is a smudge at 20 and marginal at 24. The
+  stream glyph (three sweeps, no braces, heavier) takes over and is still clean at 14. The
+  threshold is in `dp` rather than pixels on purpose: a pixel threshold would hand the same row a
+  different glyph on a 2x phone and a 3x one, and which mark appears where is the design's call.
+- **The working indicator always draws its sweeps at rest underneath the streaks.** The three
+  periods are coprime, so roughly once every twenty seconds all three streaks are in their fade at
+  the same instant — and an indicator that blinks out for a fraction of a second reads as one that
+  has finished. The braced mark never showed the fault because the braces held the glyph together;
+  the stream glyph is three strokes and nothing else.
 - A stream that ends without a chunk carrying `done` is **truncated, not finished**
   (`OllamaException.Truncated`). Treating it as a normal completion is what makes half an answer
   look like the model's final word. `ChatEngine` re-issues such a round only while it has emitted

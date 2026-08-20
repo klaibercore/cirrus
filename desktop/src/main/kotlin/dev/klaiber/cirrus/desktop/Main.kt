@@ -34,6 +34,7 @@ fun main() {
             onCloseRequest = ::exitApplication,
             state = windowState,
             title = "Cirrus",
+            icon = cirrusWindowIcon(),
         ) {
             // A tray click brings the window forward; the notifier only knows that something
             // should happen, not what window there is to raise.
@@ -41,6 +42,9 @@ fun main() {
                 window.toFront()
                 window.requestFocus()
             }
+            // The tray is installed lazily, on the first notification, so this only has to be set
+            // before one arrives rather than before the tray exists.
+            container.notifier.trayImage = cirrusTrayImage()
             CirrusApp(container)
         }
     }

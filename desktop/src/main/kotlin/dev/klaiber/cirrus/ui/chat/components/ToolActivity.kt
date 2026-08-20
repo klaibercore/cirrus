@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.klaiber.cirrus.domain.model.ToolInvocation
+import dev.klaiber.cirrus.ui.components.CirrusActivity
+import dev.klaiber.cirrus.ui.components.MarkActivity
 import dev.klaiber.cirrus.ui.components.Hairline
 import dev.klaiber.cirrus.ui.components.OutlinedPanel
 import dev.klaiber.cirrus.ui.markdown.MonospaceBlock
@@ -146,7 +148,7 @@ private fun GroupHeader(
                 modifier = Modifier.size(18.dp),
             )
 
-            running > 0 -> PulsingDot()
+            running > 0 -> CirrusActivity(activity = MarkActivity.Working, size = 16.dp)
 
             total > 0 -> Text(
                 text = formatDuration(total),
@@ -213,7 +215,10 @@ private fun ToolRow(invocation: ToolInvocation) {
                     modifier = Modifier.size(18.dp),
                 )
 
-                !invocation.isComplete -> PulsingDot()
+                !invocation.isComplete -> CirrusActivity(
+                    activity = MarkActivity.Working,
+                    size = 16.dp,
+                )
 
                 else -> invocation.durationMs?.let { duration ->
                     Text(

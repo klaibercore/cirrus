@@ -160,8 +160,12 @@ data class TagColors(
      *
      * Monochrome has one genuine casualty: a link rendered in `primary` is now near-black, which
      * makes it identical to the sentence around it and leaves underlining as the only signal. Blue
-     * is not a decoration here, it is the affordance, and it is the same blue as the `tools` tag so
-     * the palette still holds together.
+     * is not a decoration here, it is the affordance.
+     *
+     * It is [CirrusAccents.brand], not the `tools` tag's blue it used to borrow. The design system
+     * gives that one blue two jobs — the braces of the mark, and a link — on the grounds that both
+     * are structure showing through content, and an app with two nearly-identical blues in it has
+     * one blue too many.
      */
     val linkText: Color,
     /**
@@ -185,7 +189,7 @@ data class TagColors(
             violetText = Color(0xFF7C3AED),
             neutralBackground = Color(0xFFF5F5F5),
             neutralText = Color(0xFF525252),
-            linkText = Color(0xFF2563EB),
+            linkText = Color(0xFF1F72BE),
             searchHighlight = Color(0xFFFDE68A),
         )
 
@@ -206,7 +210,7 @@ data class TagColors(
             violetText = Color(0xFFC4B5FD),
             neutralBackground = Color(0xFF262626),
             neutralText = Color(0xFFA3A3A3),
-            linkText = Color(0xFF93C5FD),
+            linkText = Color(0xFF6FB4F0),
             searchHighlight = Color(0xFF5A4708),
         )
     }
@@ -258,6 +262,60 @@ data class CodeColors(
             type = Color(0xFF67E8F9),
             punctuation = Color(0xFFA3A3A3),
             attribute = Color(0xFFFCD34D),
+        )
+    }
+}
+
+/**
+ * The three accents the mark and the working indicator are drawn in.
+ *
+ * The page stays monochrome — that position has not changed, and nothing here repaints a control,
+ * a surface or a run of prose. What these add is a vocabulary for the one part of the interface
+ * that is not prose: the mark, and the thing it does while a model is answering.
+ *
+ * Each accent is a role, not a decoration, and the roles are exclusive:
+ *
+ * - [brand] is structure. The braces of the mark, and a hyperlink, which is the one place in a
+ *   transcript where structure has to be visible inside a sentence.
+ * - [contrast] is content. The three sweeps, which are what comes through the braces — near-white
+ *   on the dark theme and near-black on the light one, a half-step off the neutral ramp so the
+ *   mark reads as drawn rather than as chrome.
+ * - [ember] is electricity, and only ever that. It appears while tokens are arriving or a tool is
+ *   running, and it is gone the moment the work is. If amber is on screen, work is happening.
+ * - [signal] is the opposite end: connected, resolved, done. A reachable host, a finished turn.
+ *
+ * Kept out of [androidx.compose.material3.ColorScheme] for the reason [CodeColors] and [TagColors]
+ * are: "a tool is running" has no Material role, and mapping it onto one would mean it changed
+ * meaning whenever the scheme did.
+ */
+data class CirrusAccents(
+    val brand: Color,
+    val brandDim: Color,
+    val contrast: Color,
+    val ember: Color,
+    val signal: Color,
+) {
+    companion object {
+        /**
+         * Sunlit cirrus. Every value is darkened well past its dark-theme counterpart: a mark
+         * drawn in the night palette's #6FB4F0 on white is a pale blue smudge, and the sweeps in
+         * near-white would not be there at all.
+         */
+        val Light = CirrusAccents(
+            brand = Color(0xFF1F72BE),
+            brandDim = Color(0xFF4E9AD8),
+            contrast = Color(0xFF0E1A2C),
+            ember = Color(0xFFC96A10),
+            signal = Color(0xFF1D9C74),
+        )
+
+        /** High-altitude night. */
+        val Dark = CirrusAccents(
+            brand = Color(0xFF6FB4F0),
+            brandDim = Color(0xFF2E7FC4),
+            contrast = Color(0xFFEEF5FD),
+            ember = Color(0xFFFFA24D),
+            signal = Color(0xFF58D3A8),
         )
     }
 }

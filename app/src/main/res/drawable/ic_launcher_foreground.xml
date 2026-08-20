@@ -1,51 +1,64 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Just the cloud — now ink on a pale plate rather than pale on a dark one.
+    The Cirrus mark: three sweeps inside a pair of braces. What comes through the API, and the API
+    it comes through.
 
-    That inversion is the whole redesign, and it is not a colour swap for its own sake. The
-    reference this app now follows is black-on-white everywhere and reserves colour for the one
-    place it means something; an icon that answered with a dark slab was the last piece of the old
-    warm-toned identity still on the home screen. A near-black mark on near-white is also the more
-    confident choice among a screen of saturated gradients.
+    This replaces the filled cloud the app shipped with. The cloud was a union of three discs, drawn
+    as a silhouette because a silhouette is what survives at 48dp — a sound answer to a question the
+    design system now answers differently. Cirrus clouds are the only clouds shaped entirely by
+    wind, and their form is a record of a current passing through them, which is also what a token
+    stream is. Drawing that current directly says more about what the app does than an outline of
+    the thing the current passes through.
 
-    The construction is unchanged and deliberately so: a union of three overlapping discs over a
-    stadium-shaped base, rather than one traced outline. The union of simple circles is what gives
-    the mark its soft, even bumps, and each piece stays readable at 48dp where a hand-tuned bezier
-    turns to mush. A stroked outline was tried instead — closer to the reference's drawn mascot —
-    and abandoned: eroding a union of discs to make the inner counter leaves ink slivers in the
-    crevices wherever two discs meet shallowly, which at launcher size looks like a rendering fault.
+    Every coordinate below is on the design system's 24-unit grid, character for character from
+    design/cirrus-icons.svg, and the group is what puts that grid on Android's 108 viewport. Quoting
+    the numbers rather than re-tracing them is the only thing that keeps this drawing, the
+    notification mask and ui/components/CirrusMark.kt the same mark; the last time two of them were
+    drawn separately they quietly drifted into different shapes.
 
-    What did change is proportion. The mark is wider, flatter and smaller than before, and it is now
-    centred exactly: the silhouette spans 23.4..84.6 horizontally and 29.4..78.7 vertically, both
-    centred on 54. The old drawing filled its safe zone edge to edge, which on a circular launcher
-    mask left the base almost touching the plate; pulling it in to roughly 85% is what buys the
-    margin the reference design would insist on.
-
-    The billows stay tucked inside the base's full width — the base's caps reach 23.4 and 84.6, the
-    billows only 24.8 and 82 — so the caps define the silhouette low down and the billows define it
-    up top. Lining their outer edges up exactly instead puts a visible dent in each side where the
-    two arcs cross. Every billow's lowest point sits below the base's top edge (59.5), which is what
-    fuses four separate paths into one silhouette with no seam.
+    Scale 2.5 puts the ink at 46.4 of the 72-unit safe zone — around 64% of it. That is the number
+    with the least room either side of it: the design's own squircle sits at roughly 54%, which here
+    leaves the braces too fine to resolve on a low-density screen, and filling the safe zone edge to
+    edge leaves a circular mask with nothing to breathe. The gap between a brace and the sweep
+    nearest it is 1.6 units at this scale, which is the measurement to check first if the mark ever
+    starts looking like a smudge: below about 1.2 the two run together.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Flat-bottomed base with fully rounded ends; the caps reach x=23.4 and x=84.6. -->
-    <path
-        android:fillColor="#0A0A0A"
-        android:pathData="M33,59.5 L75,59.5 A9.6,9.6 0 0,1 75,78.7 L33,78.7 A9.6,9.6 0 0,1 33,59.5 Z" />
-    <!-- The tall middle billow, centred at (53,47). -->
-    <path
-        android:fillColor="#0A0A0A"
-        android:pathData="M35.4,47 a17.6,17.6 0 1,0 35.2,0 a17.6,17.6 0 1,0 -35.2,0 Z" />
-    <!-- Right shoulder, centred at (68,56). -->
-    <path
-        android:fillColor="#0A0A0A"
-        android:pathData="M54,56 a14,14 0 1,0 28,0 a14,14 0 1,0 -28,0 Z" />
-    <!-- Left shoulder, the smallest of the three, centred at (38,57.5). -->
-    <path
-        android:fillColor="#0A0A0A"
-        android:pathData="M24.8,57.5 a13.2,13.2 0 1,0 26.4,0 a13.2,13.2 0 1,0 -26.4,0 Z" />
+    <group
+        android:scaleX="2.5"
+        android:scaleY="2.5"
+        android:translateX="24"
+        android:translateY="24">
+        <!-- The braces, in cirrus blue: structure, and the only blue on the plate. -->
+        <path
+            android:strokeColor="#6FB4F0"
+            android:strokeWidth="1.55"
+            android:strokeLineCap="round"
+            android:pathData="M7.4,5.2C5.5,5.2 5.8,7.5 5.8,9.6C5.8,11.2 4.5,12 3.5,12C4.5,12 5.8,12.8 5.8,14.4C5.8,16.5 5.5,18.8 7.4,18.8" />
+        <path
+            android:strokeColor="#6FB4F0"
+            android:strokeWidth="1.55"
+            android:strokeLineCap="round"
+            android:pathData="M16.6,5.2C18.5,5.2 18.2,7.5 18.2,9.6C18.2,11.2 19.5,12 20.5,12C19.5,12 18.2,12.8 18.2,14.4C18.2,16.5 18.5,18.8 16.6,18.8" />
+        <!-- The three sweeps, in ice: the content coming through. Top to bottom. -->
+        <path
+            android:strokeColor="#EEF5FD"
+            android:strokeWidth="1.55"
+            android:strokeLineCap="round"
+            android:pathData="M9.3,10C10.97,8.96 12.92,9.31 14.7,8.2" />
+        <path
+            android:strokeColor="#EEF5FD"
+            android:strokeWidth="1.55"
+            android:strokeLineCap="round"
+            android:pathData="M8,13.4C10.48,11.89 13.36,12.4 16,10.8" />
+        <path
+            android:strokeColor="#EEF5FD"
+            android:strokeWidth="1.55"
+            android:strokeLineCap="round"
+            android:pathData="M9.8,15.8C11.16,14.99 12.75,15.26 14.2,14.4" />
+    </group>
 </vector>

@@ -19,6 +19,12 @@ val LocalCodeColors = staticCompositionLocalOf { CodeColors.Light }
 val LocalTagColors = staticCompositionLocalOf { TagColors.Light }
 
 /**
+ * The mark's accents, likewise: a brace is structure and a streaking sweep is electricity, and
+ * neither is a Material role that a scheme could be trusted to keep meaning the same thing.
+ */
+val LocalAccents = staticCompositionLocalOf { CirrusAccents.Light }
+
+/**
  * The app's one theme.
  *
  * There is no dynamic-colour branch, and that is the design rather than an omission. Material You
@@ -61,6 +67,7 @@ fun CirrusTheme(
     CompositionLocalProvider(
         LocalCodeColors provides if (darkTheme) CodeColors.Dark else CodeColors.Light,
         LocalTagColors provides if (darkTheme) TagColors.Dark else TagColors.Light,
+        LocalAccents provides if (darkTheme) CirrusAccents.Dark else CirrusAccents.Light,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

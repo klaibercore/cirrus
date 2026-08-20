@@ -59,10 +59,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import dev.klaiber.cirrus.domain.model.AgentTemplate
+import dev.klaiber.cirrus.ui.components.CirrusMark
 import dev.klaiber.cirrus.ui.components.Hairline
 import dev.klaiber.cirrus.ui.components.OutlinedPanel
 import dev.klaiber.cirrus.ui.components.PillButton
 import dev.klaiber.cirrus.ui.components.PillStyle
+import dev.klaiber.cirrus.ui.theme.LocalAccents
 import dev.klaiber.cirrus.ui.theme.ContainerShape
 import dev.klaiber.cirrus.ui.theme.LargeContainerShape
 import dev.klaiber.cirrus.ui.theme.Pill
@@ -208,12 +210,7 @@ private fun WelcomeStep() {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            imageVector = Icons.Outlined.Cloud,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(52.dp),
-        )
+        CirrusMark(size = 52.dp)
     }
     Spacer(Modifier.height(16.dp))
     Text(
@@ -462,7 +459,10 @@ private fun StatusPanel(ok: Boolean, title: String, body: String) {
             Icon(
                 imageVector = if (ok) Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline,
                 contentDescription = null,
-                tint = onContainer,
+                // A reachable host is the one thing this whole wizard exists to establish, and it
+                // is exactly what the design system reserves `signal` for: connected, resolved,
+                // done. A tick in the body colour said "here is another line of text".
+                tint = if (ok) LocalAccents.current.signal else onContainer,
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(12.dp))

@@ -95,17 +95,19 @@ class DesktopNotifier : Notifier {
     }
 
     /**
-     * Installs the tray icon once. Returns false when there is no tray to install into.
-     *
-     * The icon is a 16x16 solid square in the app's accent colour — a tray icon is a marker, not
-     * a logo, and a generated one avoids shipping an image asset for a desktop build.
+     * The picture the tray icon is drawn with. Set by the desktop entry point, which is the layer
+     * that knows how to draw the app's mark; left unset — in a test, say — the tray falls back to
+     * a plain dark square rather than failing to install.
      */
+    var trayImage: BufferedImage? = null
+
+    /** Installs the tray icon once. Returns false when there is no tray to install into. */
     private fun ensureTray(): Boolean {
         if (trayReady.get()) return true
         if (!SystemTray.isSupported()) return false
         return runCatching {
             val tray = SystemTray.getSystemTray()
-            val icon = TrayIcon(placeholderIcon(), "Cirrus").apply {
+            val icon = TrayIcon(trayImage ?: placeholderIcon(), "Cirrus").apply {
                 isImageAutoSize = true
                 addMouseListener(object : MouseAdapter() {
                     override fun mouseClicked(event: MouseEvent) {
@@ -125,6 +127,7 @@ class DesktopNotifier : Notifier {
     /** Called when the user clicks the tray icon; wired by the desktop app to focus the window. */
     var onTrayClick: (() -> Unit)? = null
 
+    /** The last resort: a marker, not a logo. See [trayImage]. */
     private fun placeholderIcon(): BufferedImage {
         val image = BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB)
         val graphics = image.createGraphics()

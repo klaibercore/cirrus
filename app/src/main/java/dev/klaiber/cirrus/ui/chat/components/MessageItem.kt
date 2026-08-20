@@ -2,10 +2,6 @@ package dev.klaiber.cirrus.ui.chat.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -68,6 +64,8 @@ import dev.klaiber.cirrus.domain.model.Attachment
 import dev.klaiber.cirrus.domain.model.ChatMessage
 import dev.klaiber.cirrus.domain.model.GenerationStats
 import dev.klaiber.cirrus.domain.model.Role
+import dev.klaiber.cirrus.ui.components.CirrusActivity
+import dev.klaiber.cirrus.ui.components.MarkActivity
 import dev.klaiber.cirrus.ui.components.OutlinedPanel
 import dev.klaiber.cirrus.ui.markdown.MarkdownText
 import dev.klaiber.cirrus.ui.markdown.highlighting
@@ -75,7 +73,6 @@ import dev.klaiber.cirrus.ui.markdown.MonospaceBlock
 import dev.klaiber.cirrus.ui.theme.ContainerShape
 import dev.klaiber.cirrus.ui.theme.LargeContainerShape
 import dev.klaiber.cirrus.ui.theme.LocalTagColors
-import dev.klaiber.cirrus.ui.theme.Pill
 import dev.klaiber.cirrus.ui.util.formatBytes
 import dev.klaiber.cirrus.ui.util.formatNanos
 import dev.klaiber.cirrus.ui.util.rememberClipboard
@@ -469,11 +466,18 @@ private fun ErrorCard(error: String, onRetry: () -> Unit, modifier: Modifier = M
     }
 }
 
+/**
+ * The gap between sending a prompt and the first token coming back.
+ *
+ * 20dp gets the stream glyph rather than the braced mark, which is the right way round: what has
+ * to be legible here is three sweeps moving, and braces at this size would spend most of the box
+ * on a frame around something too small to read.
+ */
 @Composable
 private fun StreamingIndicator(hasContent: Boolean) {
     if (hasContent) return
     Row(verticalAlignment = Alignment.CenterVertically) {
-        PulsingDot()
+        CirrusActivity(activity = MarkActivity.Thinking, size = 20.dp)
         Spacer(Modifier.width(8.dp))
         Text(
             text = "Working…",
@@ -481,27 +485,6 @@ private fun StreamingIndicator(hasContent: Boolean) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-}
-
-@Composable
-internal fun PulsingDot() {
-    val transition = rememberInfiniteTransition(label = "pulse")
-    val alpha by transition.animateFloat(
-        initialValue = 0.25f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(700),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "pulseAlpha",
-    )
-    Box(
-        modifier = Modifier
-            .size(9.dp)
-            .alpha(alpha)
-            .clip(Pill)
-            .background(MaterialTheme.colorScheme.primary),
-    )
 }
 
 @Composable

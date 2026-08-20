@@ -1,15 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Status-bar icons are drawn as a mask: only the alpha channel survives, so this is a solid
-    silhouette with no detail inside it.
+    The status-bar icon. Drawn as a mask: only the alpha channel survives, so there is no colour
+    here and no detail inside the silhouette.
 
-    The viewport stays at 108 even though the icon renders at 24dp, so the geometry is character for
-    character the launcher's — the previous version was a separately hand-drawn bezier cloud that
-    had quietly drifted into a different shape from the one on the home screen. Sharing the numbers
-    is the only way the two stay in agreement.
+    This is the stream glyph, not the full mark, and that is the design system's own rule rather
+    than a concession: below about 20dp the braces close up into a smear, so the small mark drops
+    them and keeps the sweeps — re-proportioned and drawn heavier so three strokes fill the box on
+    their own. Scaling the braced mark down to 24dp instead gives something that is present in the
+    status bar and illegible in it, which is worse than a simpler mark that is neither.
 
-    The silhouette spans 23.4..84.6 of 108, which leaves roughly 5dp of clear space inside the 24dp
-    box — about what the status bar expects.
+    The viewport stays at 108 while the icon renders at 24dp so the geometry is quotable from the
+    same 24-unit grid as the launcher — the two had already drifted into different shapes once, back
+    when each was hand-drawn. The silhouette spans 23.8..84.2 of 108, which is what the cloud it
+    replaces spanned, and leaves roughly the 5dp of clear space the status bar expects.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
@@ -17,16 +20,25 @@
     android:viewportWidth="108"
     android:viewportHeight="108"
     android:tint="#FFFFFFFF">
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M33,59.5 L75,59.5 A9.6,9.6 0 0,1 75,78.7 L33,78.7 A9.6,9.6 0 0,1 33,59.5 Z" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M35.4,47 a17.6,17.6 0 1,0 35.2,0 a17.6,17.6 0 1,0 -35.2,0 Z" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M54,56 a14,14 0 1,0 28,0 a14,14 0 1,0 -28,0 Z" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M24.8,57.5 a13.2,13.2 0 1,0 26.4,0 a13.2,13.2 0 1,0 -26.4,0 Z" />
+    <group
+        android:scaleX="3.9"
+        android:scaleY="3.9"
+        android:translateX="7.2"
+        android:translateY="7.2">
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.9"
+            android:strokeLineCap="round"
+            android:pathData="M7.1,9.2c3.23,-1.74 6.47,-1.26 9.8,-3" />
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.9"
+            android:strokeLineCap="round"
+            android:pathData="M5.2,14.2c4.49,-2.44 8.98,-1.76 13.6,-4.2" />
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.9"
+            android:strokeLineCap="round"
+            android:pathData="M7.9,17.8c2.71,-1.51 5.41,-1.09 8.2,-2.6" />
+    </group>
 </vector>

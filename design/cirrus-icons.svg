@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+<!--
+  Cirrus icon sprite — design system v1.0.
+
+  Every glyph is built from one primitive: a curve that rises to the right and ends in a round cap.
+  Slope stays between −0.25 and −0.40, caps and joins are always round, and the ink of each glyph
+  is centred on (12,12) of the 24 grid so a row of them sits on one optical line.
+
+  Colour comes from four custom properties, each with a dark-theme fallback written into its own
+  var(): "brand" carries structure, "contrast" carries content, "ember" means electricity and
+  nothing else, and "knockout" is the plate colour a glyph sits on, used only where a shape has to
+  punch a hole in itself.
+
+  The fallbacks are inside the var() rather than in a style block, and that is not a preference. A
+  style block here can only reach a consuming <use> through a selector like `svg{...}`, which
+  matches every svg on the host page — and a rule on the element beats a value inherited from an
+  ancestor, so the defaults would quietly override the page's own theme and the light palette would
+  never take. A var() fallback defers to the host whenever the host has an opinion.
+
+  Corrections applied to the first draft, all of them alignment rather than redrawing:
+
+  i-mark    The three sweeps sat 0.95 units low inside braces that were already centred, and their
+            vertical rhythm was 2.85 then 3.90, so the bottom wisp read as detached. That wisp was
+            also a 2.9-unit stub against a 5.0 top wisp. Rhythm is now an even 3.0 and the taper
+            5.4 / 8.0 / 4.4, centred on the braces’ own axis.
+  i-stream  Same defect, same fix: rhythm was 4.05 then 5.30, now an even 4.4, and the group is
+            centred on both axes rather than 0.2 left and 0.1 low.
+  i-link    The connector stopped 2.1 units short of the upper node, leaving a gap where the design
+            is a single line under tension. Both ends now land exactly on their circle, and the
+            pair is centred; it sat 0.4 low.
+  i-surge   Centred (0.3 left, 0.2 low) and brought down to the same 16.8-unit ink height as the
+            rest of the set. At 18.2 it was the loudest glyph on the wall.
+  i-bulb    The glass was a hand-fitted bezier, not symmetric about its own axis and hanging 1.1
+            units high. It is now a true arc struck from x=12, so both shoulders match.
+  i-cloud   Centred (0.15 left, 0.8 high), and the lower wisp no longer overlaps the cloud’s own
+            base line.
+  i-llama   Centred horizontally; it sat 0.55 left. The wind variant sat 1.8 left because the gusts
+            were counted into the composition on one side only.
+-->
+<!-- The primary mark: three sweeps inside a pair of braces. What comes through the API, and the
+     API it comes through. Below 20px the braces close up — use i-stream there instead. -->
+<symbol id="i-mark" viewBox="0 0 24 24">
+  <g fill="none" stroke-linecap="round" stroke-width="1.55">
+    <g stroke="var(--brand, #6FB4F0)">
+      <path d="M7.4 5.2C5.5 5.2 5.8 7.5 5.8 9.6C5.8 11.2 4.5 12 3.5 12C4.5 12 5.8 12.8 5.8 14.4C5.8 16.5 5.5 18.8 7.4 18.8"/>
+      <path d="M16.6 5.2C18.5 5.2 18.2 7.5 18.2 9.6C18.2 11.2 19.5 12 20.5 12C19.5 12 18.2 12.8 18.2 14.4C18.2 16.5 18.5 18.8 16.6 18.8"/>
+    </g>
+    <g stroke="var(--contrast, #EEF5FD)">
+      <path d="M9.3 10C10.97 8.96 12.92 9.31 14.7 8.2"/>
+      <path d="M8 13.4C10.48 11.89 13.36 12.4 16 10.8"/>
+      <path d="M9.8 15.8C11.16 14.99 12.75 15.26 14.2 14.4"/>
+    </g>
+  </g>
+</symbol>
+
+<!-- The small mark. Same three sweeps, no braces, heavier stroke: this is what survives at 14px.
+     Measured against a real pixel grid, the braced mark above only separates into braces and sweeps
+     at about 28px — not the 20 first assumed — so this glyph covers everything below that. -->
+<symbol id="i-stream" viewBox="0 0 24 24">
+  <g fill="none" stroke-linecap="round" stroke-width="1.9">
+    <path stroke="var(--brand, #6FB4F0)" d="M7.1 9.2c3.23-1.74 6.47-1.26 9.8-3"/>
+    <path stroke="var(--contrast, #EEF5FD)" d="M5.2 14.2c4.49-2.44 8.98-1.76 13.6-4.2"/>
+    <path stroke="var(--brand, #6FB4F0)" d="M7.9 17.8c2.71-1.51 5.41-1.09 8.2-2.6"/>
+  </g>
+</symbol>
+
+<symbol id="i-llama" viewBox="0 0 24 24">
+  <g fill="none" stroke-linecap="round" transform="translate(0.55 0)">
+    <g stroke="var(--contrast, #EEF5FD)">
+      <path stroke-width="1.5" d="M7.6 17.6L8.05 20.7"/>
+      <path stroke-width="1.5" d="M11 17.6L10.85 20.7"/>
+      <path stroke-width="5.8" d="M7 15.7C8.5 15.05 10.1 15.05 11.7 15.7"/>
+      <path stroke-width="2.5" d="M12.1 14.5C13.1 11.7 13.55 9.3 14.3 7.5"/>
+      <path stroke-width="2.45" d="M14.2 6.8C15.4 6.15 16.7 6.4 17.55 7.05"/>
+    </g>
+    <g stroke="var(--brand, #6FB4F0)" stroke-width="1.25">
+      <path d="M13.5 5.7L13.1 3.3"/><path d="M15.5 5.5L16.05 3.2"/>
+    </g>
+    <circle cx="15.35" cy="6.6" r="0.42" fill="var(--knockout, #0E1626)" stroke="none"/>
+  </g>
+</symbol>
+
+<symbol id="i-llama-wind" viewBox="0 0 24 24">
+  <g fill="none" stroke-linecap="round" transform="translate(1.8 0)">
+    <g stroke="var(--brand, #6FB4F0)" stroke-width="1.3">
+      <path d="M2.3 12.6c1.6-.9 3.2-.7 4.9-1.6"/><path d="M3.3 9.3c1.2-.7 2.3-.5 3.6-1.2"/>
+    </g>
+    <g stroke="var(--contrast, #EEF5FD)">
+      <path stroke-width="1.5" d="M7.6 17.6L8.05 20.7"/>
+      <path stroke-width="1.5" d="M11 17.6L10.85 20.7"/>
+      <path stroke-width="5.8" d="M7 15.7C8.5 15.05 10.1 15.05 11.7 15.7"/>
+      <path stroke-width="2.5" d="M12.1 14.5C13.1 11.7 13.55 9.3 14.3 7.5"/>
+      <path stroke-width="2.45" d="M14.2 6.8C15.4 6.15 16.7 6.4 17.55 7.05"/>
+    </g>
+    <g stroke="var(--brand, #6FB4F0)" stroke-width="1.25">
+      <path d="M13.5 5.7L13.1 3.3"/><path d="M15.5 5.5L16.05 3.2"/>
+    </g>
+    <circle cx="15.35" cy="6.6" r="0.42" fill="var(--knockout, #0E1626)" stroke="none"/>
+  </g>
+</symbol>
+
+<symbol id="i-link" viewBox="0 0 24 24">
+  <g fill="none" stroke-linecap="round" stroke-width="1.7">
+    <circle cx="5.6" cy="17" r="2.2" stroke="var(--brand, #6FB4F0)"/>
+    <circle cx="18.4" cy="7" r="2.2" stroke="var(--brand, #6FB4F0)"/>
+    <path stroke="var(--contrast, #EEF5FD)" d="M7.3 15.6C10.4 14.4 13.6 11.2 16.7 8.4"/>
+  </g>
+</symbol>
+
+<symbol id="i-surge" viewBox="0 0 24 24">
+  <path fill="none" stroke="var(--ember, #FFA24D)" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round" d="M15.2 4.5L8.8 12.5H13.5L9.3 19.5"/>
+</symbol>
+
+<symbol id="i-bulb" viewBox="0 0 24 24">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7">
+    <path stroke="var(--contrast, #EEF5FD)" d="M8.9 15A5.6 5.6 0 1 1 15.1 15L15.1 17.3L8.9 17.3Z"/>
+    <path stroke="var(--brand, #6FB4F0)" d="M10.4 19.2L13.6 19.2"/>
+    <path stroke="var(--ember, #FFA24D)" stroke-width="1.6" d="M10.1 12.4c1.27-.81 2.51-.55 3.8-1.4"/>
+  </g>
+</symbol>
+
+<symbol id="i-cloud" viewBox="0 0 24 24">
+  <g fill="none" stroke-linecap="round" stroke-width="1.7">
+    <path stroke="var(--brand, #6FB4F0)" d="M6.75 18C4.25 18 2.75 16.2 2.75 14.2C2.75 12.2 4.45 10.6 6.45 10.6C6.85 8 9.15 6 11.95 6C14.85 6 17.25 8.2 17.45 11C19.65 11.2 21.25 12.9 21.25 14.6C21.25 16.5 19.65 18 17.65 18Z"/>
+    <path stroke="var(--contrast, #EEF5FD)" stroke-width="1.5" d="M7.8 13.55c1.79-1.01 3.58-.75 5.6-1.9"/>
+    <path stroke="var(--contrast, #EEF5FD)" stroke-width="1.5" d="M9.4 15.7c1.34-.76 2.67-.56 4.2-1.4"/>
+  </g>
+</symbol>
+</svg>

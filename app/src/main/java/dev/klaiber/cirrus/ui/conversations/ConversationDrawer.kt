@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Archive
-import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Inventory2
@@ -53,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.klaiber.cirrus.domain.model.ConversationSummary
+import dev.klaiber.cirrus.ui.components.CirrusMark
 import dev.klaiber.cirrus.ui.theme.ContainerShape
 import dev.klaiber.cirrus.ui.theme.Pill
 import dev.klaiber.cirrus.ui.util.bucketFor
@@ -86,14 +86,11 @@ fun ConversationDrawer(
                     .padding(start = 20.dp, end = 8.dp, top = 16.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // The wordmark, set the way the reference site sets its own: mark, then name in
-                // the rounded display face, at the top-left of everything.
-                Icon(
-                    imageVector = Icons.Outlined.Cloud,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(22.dp),
-                )
+                // The wordmark: mark, then name in the display face, at the top-left of
+                // everything. 28dp rather than the 22 an icon would take, because that is exactly
+                // where the braces start resolving — and a wordmark without them is the small mark,
+                // which is the right glyph for a status row and the wrong one for a signature.
+                CirrusMark(size = 28.dp)
                 Spacer(Modifier.width(10.dp))
                 Text(
                     text = "Cirrus",

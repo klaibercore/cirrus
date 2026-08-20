@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The themed-icon layer. Android throws the colours away and tints whatever alpha it finds, so
+    this is the same mark in one ink rather than two.
+
+    It is a separate file from the foreground even though the geometry is identical, because the two
+    have different jobs the moment either changes: the foreground is free to reach for a second
+    colour, a gradient or a knockout, and every one of those is meaningless here. Pointing the
+    monochrome slot at the foreground — which is what this icon used to do — works only for as long
+    as the foreground stays a flat silhouette, and stops working silently rather than loudly.
+
+    Drawn a shade heavier than the foreground's 1.55. A tinted layer lands on whatever the user's
+    wallpaper made the system pick, frequently a mid-tone against a mid-tone, and the mark loses the
+    contrast the ice-on-night plate was giving it for free.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108"
+    android:tint="#FFFFFFFF">
+    <group
+        android:scaleX="2.5"
+        android:scaleY="2.5"
+        android:translateX="24"
+        android:translateY="24">
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.75"
+            android:strokeLineCap="round"
+            android:pathData="M7.4,5.2C5.5,5.2 5.8,7.5 5.8,9.6C5.8,11.2 4.5,12 3.5,12C4.5,12 5.8,12.8 5.8,14.4C5.8,16.5 5.5,18.8 7.4,18.8" />
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.75"
+            android:strokeLineCap="round"
+            android:pathData="M16.6,5.2C18.5,5.2 18.2,7.5 18.2,9.6C18.2,11.2 19.5,12 20.5,12C19.5,12 18.2,12.8 18.2,14.4C18.2,16.5 18.5,18.8 16.6,18.8" />
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.75"
+            android:strokeLineCap="round"
+            android:pathData="M9.3,10C10.97,8.96 12.92,9.31 14.7,8.2" />
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.75"
+            android:strokeLineCap="round"
+            android:pathData="M8,13.4C10.48,11.89 13.36,12.4 16,10.8" />
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.75"
+            android:strokeLineCap="round"
+            android:pathData="M9.8,15.8C11.16,14.99 12.75,15.26 14.2,14.4" />
+    </group>
+</vector>
