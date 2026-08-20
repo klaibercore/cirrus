@@ -35,9 +35,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -54,7 +52,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.runtime.collectAsState
+import dev.klaiber.cirrus.ui.components.CirrusSheet
+import dev.klaiber.cirrus.ui.components.PillButton
+import dev.klaiber.cirrus.ui.components.ScreenTopBar
 import dev.klaiber.cirrus.domain.model.Memory
 import dev.klaiber.cirrus.domain.model.MemoryKind
 import dev.klaiber.cirrus.ui.components.EmptyState
@@ -76,6 +78,8 @@ import dev.klaiber.cirrus.ui.theme.LargeContainerShape
 fun MemoryScreen(
     onBack: () -> Unit,
     model: MemoryModel,
+    topInset: Dp = 0.dp,
+    leadingInset: Dp = 0.dp,
 ) {
     val state by model.uiState.collectAsState()
     var editing by remember { mutableStateOf<Memory?>(null) }
@@ -84,21 +88,18 @@ fun MemoryScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Memory") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { creating = true }) {
-                Icon(Icons.Outlined.Add, contentDescription = "Add a memory")
+            ScreenTopBar(
+                title = "Memory",
+                onBack = onBack,
+                topInset = topInset,
+                leadingInset = leadingInset,
+            ) {
+                PillButton(
+                    label = "Add a memory",
+                    onClick = { creating = true },
+                    icon = Icons.Outlined.Add,
+                    modifier = Modifier.padding(end = 12.dp),
+                )
             }
         },
     ) { padding ->
@@ -435,9 +436,8 @@ private fun MemoryEditorSheet(
     var kind by remember(memory?.id) { mutableStateOf(memory?.kind ?: MemoryKind.FACT) }
     var pinned by remember(memory?.id) { mutableStateOf(memory?.pinned ?: false) }
 
-    ModalBottomSheet(
+    CirrusSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
             Text(

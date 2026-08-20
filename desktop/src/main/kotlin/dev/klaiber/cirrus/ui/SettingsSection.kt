@@ -20,4 +20,5 @@ enum class SettingsSection(val title: String) {
     MUSIC("Music"),
     GITHUB("GitHub"),
     APPEARANCE("Appearance"),
+    ABOUT("About"),
 }

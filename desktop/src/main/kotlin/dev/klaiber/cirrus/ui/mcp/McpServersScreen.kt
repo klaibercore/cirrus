@@ -51,12 +51,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.runtime.collectAsState
 import dev.klaiber.cirrus.data.mcp.McpCatalogEntry
 import dev.klaiber.cirrus.data.mcp.McpServerConfig
 import dev.klaiber.cirrus.data.repository.McpServerState
 import dev.klaiber.cirrus.ui.components.HelpBadge
 import dev.klaiber.cirrus.ui.components.OutlinedPanel
+import dev.klaiber.cirrus.ui.components.PillButton
+import dev.klaiber.cirrus.ui.components.ScreenTopBar
 import dev.klaiber.cirrus.ui.theme.ContainerShape
 import dev.klaiber.cirrus.ui.theme.LargeContainerShape
 
@@ -72,6 +75,8 @@ import dev.klaiber.cirrus.ui.theme.LargeContainerShape
 fun McpServersScreen(
     onBack: () -> Unit,
     model: McpModel,
+    topInset: Dp = 0.dp,
+    leadingInset: Dp = 0.dp,
 ) {
     val state by model.uiState.collectAsState()
     val editor by model.editor.collectAsState()
@@ -79,27 +84,19 @@ fun McpServersScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("MCP servers") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = "Back",
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = model::startAdding,
-                icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                text = { Text("Add server") },
-            )
+            ScreenTopBar(
+                title = "MCP servers",
+                onBack = onBack,
+                topInset = topInset,
+                leadingInset = leadingInset,
+            ) {
+                PillButton(
+                    label = "Add server",
+                    onClick = model::startAdding,
+                    icon = Icons.Outlined.Add,
+                    modifier = Modifier.padding(end = 12.dp),
+                )
+            }
         },
     ) { innerPadding ->
         LazyColumn(

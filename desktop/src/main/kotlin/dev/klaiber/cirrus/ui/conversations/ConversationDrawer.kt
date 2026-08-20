@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -49,12 +51,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import dev.klaiber.cirrus.domain.model.ConversationSummary
 import dev.klaiber.cirrus.ui.theme.ContainerShape
 import dev.klaiber.cirrus.ui.theme.Pill
 import dev.klaiber.cirrus.ui.util.bucketFor
+
+/**
+ * How wide the sidebar stands when the window is wide enough to keep it.
+ *
+ * Wide enough for a two-line conversation row to show a usable amount of its title, narrow enough
+ * that a 1180pt window still leaves the transcript its full reading measure with room to spare.
+ */
+val SidebarWidth = 268.dp
 
 /**
  * Conversation list.
@@ -69,20 +80,33 @@ fun ConversationDrawer(
     onNewChat: () -> Unit,
     onOpenSettings: () -> Unit,
     model: ConversationsModel,
+    modifier: Modifier = Modifier,
+    embedded: Boolean = false,
+    topInset: Dp = 0.dp,
 ) {
     val state by model.uiState.collectAsState()
     var renameTarget by remember { mutableStateOf<ConversationSummary?>(null) }
     var deleteTarget by remember { mutableStateOf<ConversationSummary?>(null) }
 
-    ModalDrawerSheet(
-        drawerShape = RoundedCornerShape(0.dp, 16.dp, 16.dp, 0.dp),
-        drawerContainerColor = MaterialTheme.colorScheme.surface,
-    ) {
+    // The same list, in whichever container the window is wide enough for. Embedded it is a plain
+    // surface with a square edge, because a permanent pane is part of the window rather than
+    // something laid over it — the rounded corner and the drawer's own elevation both say
+    // "temporary", and neither is true once the sidebar is simply always there.
+    val body: @Composable ColumnScope.() -> Unit = {
         Column(Modifier.fillMaxSize()) {
+            // On macOS the transparent title bar reaches down over this pane and the traffic
+            // lights sit in its top-left, so the wordmark starts below them rather than under
+            // them. Off macOS the inset is zero and the row sits where it always did.
+            Spacer(Modifier.height(topInset))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 8.dp, top = 16.dp, bottom = 10.dp),
+                    // 8dp, not 16: the chat pane's header is a 64dp app bar starting at the same
+                    // inset, so its title sits 60dp from the top of the window. This row's own
+                    // 48dp controls land on the same line only at this padding, and a wordmark
+                    // half a line below the conversation title beside it is the sort of thing
+                    // nobody consciously notices and everybody sees.
+                    .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // The wordmark, set the way the reference site sets its own: mark, then name in
@@ -181,6 +205,21 @@ fun ConversationDrawer(
             )
             Spacer(Modifier.height(8.dp))
         }
+    }
+
+    if (embedded) {
+        Surface(
+            modifier = modifier.fillMaxHeight().width(SidebarWidth),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            content = { Column(content = body) },
+        )
+    } else {
+        ModalDrawerSheet(
+            modifier = modifier,
+            drawerShape = RoundedCornerShape(0.dp, 16.dp, 16.dp, 0.dp),
+            drawerContainerColor = MaterialTheme.colorScheme.surface,
+            content = body,
+        )
     }
 
     renameTarget?.let { target ->

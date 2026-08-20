@@ -40,12 +40,10 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import dev.klaiber.cirrus.ui.components.CirrusSheet
 import dev.klaiber.cirrus.domain.model.ModelCapability
 import dev.klaiber.cirrus.domain.model.ModelFilter
 import dev.klaiber.cirrus.domain.model.ModelInfo
@@ -96,9 +95,8 @@ fun ModelPickerSheet(
         ModelFilter.available(models)
     }
 
-    ModalBottomSheet(
+    CirrusSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
         Column(Modifier.padding(bottom = 24.dp)) {
             Row(

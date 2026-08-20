@@ -22,14 +22,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.klaiber.cirrus.ui.components.CirrusSheet
 import dev.klaiber.cirrus.domain.model.AgentRun
 import dev.klaiber.cirrus.domain.model.AgentRunStatus
 import dev.klaiber.cirrus.domain.model.AgentRunTrigger
@@ -54,9 +53,8 @@ fun AgentHistorySheet(
     onOpenRun: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
+    CirrusSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
             Text(agentName, style = MaterialTheme.typography.titleMedium)
@@ -171,9 +169,8 @@ fun AgentTemplateSheet(
     onStartBlank: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
+    CirrusSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
         Column(
             modifier = Modifier

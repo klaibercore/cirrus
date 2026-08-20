@@ -54,7 +54,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.runtime.collectAsState
+import dev.klaiber.cirrus.ui.components.ScreenTopBar
 import dev.klaiber.cirrus.domain.model.Agent
 import dev.klaiber.cirrus.domain.notify.Notifier
 import dev.klaiber.cirrus.domain.model.AgentRunStatus
@@ -78,6 +80,8 @@ import dev.klaiber.cirrus.ui.util.formatWhen
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentsScreen(
+    topInset: Dp = 0.dp,
+    leadingInset: Dp = 0.dp,
     onBack: () -> Unit,
     onOpenConversation: (String) -> Unit,
     model: AgentsModel,
@@ -99,24 +103,19 @@ fun AgentsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Agents") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { pickingTemplate = true },
-                icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                text = { Text("New agent") },
-            )
+            ScreenTopBar(
+                title = "Agents",
+                onBack = onBack,
+                topInset = topInset,
+                leadingInset = leadingInset,
+            ) {
+                PillButton(
+                    label = "New agent",
+                    onClick = { pickingTemplate = true },
+                    icon = Icons.Outlined.Add,
+                    modifier = Modifier.padding(end = 12.dp),
+                )
+            }
         },
     ) { padding ->
         LazyColumn(

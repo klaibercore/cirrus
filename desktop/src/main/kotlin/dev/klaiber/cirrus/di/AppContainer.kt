@@ -88,7 +88,12 @@ import java.util.concurrent.TimeUnit
  * can do something?". Everything is a `val` so the wiring order is the only thing that matters.
  */
 class AppContainer(
-    private val dataDir: File,
+    /**
+     * Where every store lives. Public because the About section names it and offers to open it:
+     * this is the build with no Keystore and no database, so "on this computer only" is a claim
+     * the user is entitled to go and verify.
+     */
+    val dataDir: File,
     private val scope: CoroutineScope,
 ) {
 

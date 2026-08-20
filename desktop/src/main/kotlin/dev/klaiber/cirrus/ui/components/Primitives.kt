@@ -16,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,7 +37,7 @@ import dev.klaiber.cirrus.ui.theme.Pill
  */
 
 /** Border weight for every outlined surface. Stated once so nothing drifts to 1.5dp. */
-private val HairlineWidth = 1.dp
+internal val HairlineWidth = 1.dp
 
 /**
  * A container that shows its edges instead of floating above the page.
@@ -210,4 +211,21 @@ fun CircularIconSlot(
     Surface(color = color, shape = Pill, modifier = modifier.size(size)) {
         Box(contentAlignment = Alignment.Center) { content() }
     }
+}
+
+/**
+ * The same rule, stood on its end.
+ *
+ * A desktop window divides horizontally as readily as it divides vertically — a sidebar beside a
+ * transcript is the shape the extra width is for — and the seam between two panes has to be made
+ * of the same hairline as every other edge in the app, or the split reads as two applications
+ * sharing a window rather than one application with two panes.
+ */
+@Composable
+fun VerticalHairline(modifier: Modifier = Modifier) {
+    VerticalDivider(
+        modifier = modifier,
+        thickness = HairlineWidth,
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
 }

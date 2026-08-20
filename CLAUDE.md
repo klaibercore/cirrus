@@ -418,6 +418,47 @@ on the application scope via `TurnController` — nothing in the UI starts one. 
 `Screen`s rather than a `NavHost`, since a window has no process death to survive and no deep links
 to route.
 
+**The window chrome belongs to the app.** macOS paints a title bar in its own grey, from its own
+appearance, which on a near-black app reads as a Finder window glued to the top of a transcript.
+`applyNativeChrome` (`ui/window/WindowChrome.kt`) stops it drawing rather than trying to restyle it:
+`fullWindowContent` extends the content view up under the bar, `transparentTitleBar` stops it
+painting, and `windowTitleVisible` removes the centred title. The traffic lights stay, because they
+are the part users need and the part no app should reimplement. What that buys is a window whose
+chrome is the same colour as its content in both themes; what it costs is two insets every screen
+owes and `ScreenTopBar` exists to pay — `TitleBarHeight` across the whole window width, and
+`TrafficLightWidth` in whichever pane is leftmost. Nothing interactive may sit in that top strip:
+the bar is transparent but still present, and still takes the drag. Off macOS both constants are
+zero and the layout is unchanged. `prepareNativeApplication` sets the Dock and menu-bar name before
+AWT initialises, which is the only moment either is read — without it a development run announces
+itself as "MainKt".
+
+**The conversation list is a sidebar, not a drawer.** Resident beside the transcript above
+`SidebarBreakpoint` (880pt) and a `ModalNavigationDrawer` below it, from one `ConversationDrawer`
+with an `embedded` flag — a window can be dragged across that line at any moment, so both
+containers have to exist rather than one being chosen at launch. Resident, it is also the pane
+that holds the traffic lights, which is why the wordmark sits where it does.
+
+**A menu bar, and it owns its shortcuts.** `AppActions` is handed *out* of `CirrusApp` because a
+`MenuBar` may only be declared in the window's scope while the state it acts on lives in the app.
+Cmd+N, Cmd+, and Cmd+\ are the menu's alone: a menu key equivalent is consumed before the keystroke
+reaches the focused component, so a second root-level handler either never runs or, where it does,
+toggles the sidebar twice. Screen-local bindings (Cmd+F, Escape) stay with the screen whose state
+they touch.
+
+**Panels, not bottom sheets.** `CirrusSheet` replaces `ModalBottomSheet` everywhere. A sheet rising
+from the bottom edge answers a thumb on a tall phone; in an 1180x820 window it puts the model
+picker at the far edge of the screen from the pointer and leaves most of the window dimmed and
+idle. The signature matches the sheet it replaced so the call sites are one word different.
+Scrolling is left to the content — several of these hold a `LazyColumn` with a cap of its own, and
+nesting that inside a scroller in the same direction is a crash rather than a layout choice.
+
+**Everything holds a measure.** `ReadingMeasure` (780pt) for settings and forms, `TranscriptMeasure`
+(860pt) for the chat, `WizardMeasure` (620pt) for onboarding. A desktop window is always wider than
+any line anybody wants to read, and a settings row stretched to 1180pt puts its switch a hand's
+width from its label. Note the modifier order in `Modifier.readingMeasure`:
+`fillMaxWidth().widthIn(max)` does nothing at all, because `fillMaxWidth` hands its child a fixed
+width and `widthIn` may only raise a maximum to meet a minimum, never lower it below one.
+
 **No WorkManager.** `AgentScheduler` and `ConsolidationScheduler` are coroutines that sleep until
 due, run, and book the next occurrence — the same shape as the one-shot-that-re-books-itself they
 replace, and for the same reason: periodic work drifts against the wall clock and "07:30 on
@@ -450,7 +491,11 @@ mid-stream.
 
 **Settings is one scrolling page**, not Android's list of sub-screens — a 1180pt window can show it,
 and a phone's navigation pattern here would be a worse app. `SettingsSection` still exists and
-`SettingsCatalogTest` still asserts that every `SettingSwitch.path` names a section that does.
+`SettingsCatalogTest` still asserts that every `SettingSwitch.path` names a section that does. The
+`ABOUT` section is the desktop's own: it names the data folder and offers to open it, because this
+is the build with no Keystore and no database, so "on this computer only" is a claim the user should
+be able to go and check — and it is also the answer to what backing Cirrus up means here, which on
+Android is the system's problem and here is nobody's until somebody says which folder to copy.
 
 The test suite came across with the code: 416 tests across 36 classes, run with `:desktop:test`.
 
@@ -552,6 +597,15 @@ The test suite came across with the code: 416 tests across 36 classes, run with 
   path data on purpose; the two had already drifted into different shapes once.
 - The billows of the launcher icon are deliberately narrower than its base. Lining their outer
   edges up exactly puts a visible dent in each side of the cloud where the two arcs cross.
+- `flow.collectAsState(initial)` on a **`StateFlow`** selects the plain-`Flow` overload, which shows
+  the supplied `initial` for the first composition and only catches up a frame later. On the desktop
+  build that meant composition one saw a default `AppSettings` — and since the start destination is
+  `remember`ed from exactly that frame, a user who had finished the wizard was posted back into it on
+  every launch. Call `collectAsState()` with no argument on a `StateFlow`; the container has already
+  loaded it before the first window exists.
+- The macOS title bar made transparent by `applyNativeChrome` is **still there and still takes the
+  drag**. Anything interactive placed in the top `TitleBarHeight` of the window will look clickable
+  and not be. Screens inset past it rather than drawing into it.
 - A stream that ends without a chunk carrying `done` is **truncated, not finished**
   (`OllamaException.Truncated`). Treating it as a normal completion is what makes half an answer
   look like the model's final word. `ChatEngine` re-issues such a round only while it has emitted

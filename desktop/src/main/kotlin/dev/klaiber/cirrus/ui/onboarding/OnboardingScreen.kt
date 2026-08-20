@@ -63,6 +63,9 @@ import dev.klaiber.cirrus.ui.components.Hairline
 import dev.klaiber.cirrus.ui.components.OutlinedPanel
 import dev.klaiber.cirrus.ui.components.PillButton
 import dev.klaiber.cirrus.ui.components.PillStyle
+import dev.klaiber.cirrus.ui.components.readingMeasure
+import dev.klaiber.cirrus.ui.window.TitleBarHeight
+import dev.klaiber.cirrus.ui.window.TrafficLightWidth
 import dev.klaiber.cirrus.ui.theme.ContainerShape
 import dev.klaiber.cirrus.ui.theme.LargeContainerShape
 import dev.klaiber.cirrus.ui.theme.Pill
@@ -93,12 +96,17 @@ fun OnboardingScreen(
 
     Scaffold(
         topBar = {
+            Column {
+            // The wizard is the one screen with no sidebar to hold the traffic lights, so it pays
+            // the title-bar strip itself and starts the step counter clear of the close button.
+            Spacer(Modifier.height(TitleBarHeight))
             TopAppBar(
                 title = {
                     Text(
                         text = "Step ${state.stepNumber} of ${state.stepCount}",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = TrafficLightWidth),
                     )
                 },
                 actions = {
@@ -110,13 +118,14 @@ fun OnboardingScreen(
                     containerColor = MaterialTheme.colorScheme.surface,
                 ),
             )
+            }
         },
         bottomBar = {
-            Column {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Hairline()
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .readingMeasure(WizardMeasure)
                         .padding(horizontal = 20.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -147,13 +156,17 @@ fun OnboardingScreen(
             }
         },
     ) { padding ->
+        // Centred rather than left-aligned. Android had no choice — a phone *is* the measure — but
+        // a wizard set hard against the left edge of a 1180pt window puts a paragraph of forty
+        // words next to eight hundred points of nothing, and reads as a page that failed to load.
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+        Column(modifier = Modifier.readingMeasure(WizardMeasure).padding(horizontal = 20.dp)) {
             when (state.step) {
                 OnboardingStep.WELCOME -> WelcomeStep()
                 OnboardingStep.HOST -> HostStep(state, model)
@@ -164,8 +177,18 @@ fun OnboardingScreen(
             }
             Spacer(Modifier.height(32.dp))
         }
+        }
     }
 }
+
+/**
+ * The wizard's own measure.
+ *
+ * Narrower than the transcript's, because every step here is a heading, a paragraph and one or two
+ * fields — a form, in other words, and a form set as wide as a transcript makes its labels and its
+ * inputs look unrelated.
+ */
+private val WizardMeasure = 620.dp
 
 @Composable
 private fun StepDots(current: Int, total: Int) {
@@ -246,8 +269,12 @@ private fun WelcomeStep() {
     FeatureRow(
         icon = Icons.Outlined.CheckCircle,
         title = "Your keys stay here",
-        body = "Every secret is encrypted with a key held by this device and sent only to the " +
-            "service it belongs to.",
+        // Not "encrypted with a key held by this device", which is what the Android build says and
+        // what this one said until somebody read both. There is no Keystore on the desktop to hold
+        // such a key, and the key step a few screens along already admits it. A promise made on
+        // the welcome screen and withdrawn on step four is worse than never making it.
+        body = "Every secret is stored in Cirrus's own folder on this computer, and sent only to " +
+            "the service it belongs to.",
     )
     Spacer(Modifier.height(12.dp))
     Text(

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -32,6 +33,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.automirrored.outlined.MenuOpen
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.Cloud
@@ -60,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.derivedStateOf
@@ -73,11 +76,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import dev.klaiber.cirrus.domain.model.Role
@@ -96,11 +107,21 @@ import dev.klaiber.cirrus.ui.chat.components.ModelPickerSheet
 import dev.klaiber.cirrus.ui.chat.components.ParametersSheet
 import dev.klaiber.cirrus.ui.chat.components.SpeechButtonState
 import dev.klaiber.cirrus.ui.util.rememberClipboard
+import dev.klaiber.cirrus.ui.window.LocalWindowTitle
 import dev.klaiber.cirrus.ui.util.FileDialogs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.time.LocalTime
+
+/**
+ * How wide the transcript is allowed to get.
+ *
+ * A shade wider than the [dev.klaiber.cirrus.ui.components.ReadingMeasure] the settings pages use,
+ * because a transcript is not only prose: a code block or a table set at 780pt starts wrapping
+ * lines that were written to fit, and re-wrapped code is harder to read than a long line of it.
+ */
+private val TranscriptMeasure = 860.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,6 +131,10 @@ fun ChatScreen(
     onNavigateToConversation: (String) -> Unit,
     onNewChat: () -> Unit,
     model: ChatModel,
+    sidebarVisible: Boolean = false,
+    onToggleSidebar: (() -> Unit)? = null,
+    leadingInset: Dp = 0.dp,
+    topInset: Dp = 0.dp,
 ) {
     val state by model.uiState.collectAsState()
     val isRefreshingModels by model.isRefreshingModels.collectAsState()
@@ -131,6 +156,17 @@ fun ChatScreen(
             snackbarHostState.showSnackbar(it)
             copyNotice = null
         }
+    }
+
+    // The window is named after what it is showing. The title is hidden from the bar itself on
+    // macOS, but it is still how this window is labelled in Mission Control, in the Window menu
+    // and in the app switcher — three places where "Cirrus, Cirrus, Cirrus" is no help at all.
+    val windowTitle = LocalWindowTitle.current
+    LaunchedEffect(state.title) {
+        windowTitle.value = state.title.ifBlank { "Cirrus" }
+    }
+    DisposableEffect(Unit) {
+        onDispose { windowTitle.value = "Cirrus" }
     }
 
     LaunchedEffect(Unit) {
@@ -234,7 +270,30 @@ fun ChatScreen(
         if (index >= 0) listState.animateScrollToItem(index)
     }
 
+    /**
+     * The two bindings that belong to a transcript rather than to the window.
+     *
+     * They live here because the state they act on does: `openSearch` and `closeSearch` are the
+     * chat model's, and hoisting them to the window shell so it could own every shortcut would
+     * mean the shell knowing which screen is showing before it could decide what a key means.
+     */
+    fun onChatShortcut(event: KeyEvent): Boolean {
+        if (event.type != KeyEventType.KeyDown) return false
+        return when {
+            event.isMetaPressed && event.key == Key.F && state.messages.isNotEmpty() -> {
+                model.openSearch(); true
+            }
+            // Escape closes the find bar, and nothing else — a stray Escape in the composer must
+            // not throw away a half-written message.
+            event.key == Key.Escape && state.search.isActive -> {
+                model.closeSearch(); true
+            }
+            else -> false
+        }
+    }
+
     Scaffold(
+        modifier = Modifier.onPreviewKeyEvent(::onChatShortcut),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             if (state.search.isActive) {
@@ -244,9 +303,12 @@ fun ChatScreen(
                     onPrevious = model::previousMatch,
                     onNext = model::nextMatch,
                     onClose = model::closeSearch,
+                    topInset = topInset,
+                    leadingInset = leadingInset,
                 )
             } else {
             Column {
+            Spacer(Modifier.height(topInset))
             TopAppBar(
                 title = {
                     // One tap target covering both lines, clipped so the ripple has an edge to
@@ -283,8 +345,25 @@ fun ChatScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onOpenDrawer) {
-                        Icon(Icons.Outlined.Menu, contentDescription = "Open conversations")
+                    // With the list resident there is nothing to reveal, so the same button
+                    // collapses it instead. Two glyphs for two genuinely different actions: a
+                    // hamburger that hides a visible sidebar reads as a bug.
+                    IconButton(
+                        onClick = onToggleSidebar ?: onOpenDrawer,
+                        modifier = Modifier.padding(start = leadingInset),
+                    ) {
+                        Icon(
+                            imageVector = if (sidebarVisible) {
+                                Icons.AutoMirrored.Outlined.MenuOpen
+                            } else {
+                                Icons.Outlined.Menu
+                            },
+                            contentDescription = if (sidebarVisible) {
+                                "Hide conversations"
+                            } else {
+                                "Show conversations"
+                            },
+                        )
                     }
                 },
                 actions = {
@@ -344,13 +423,19 @@ fun ChatScreen(
             }
         },
         bottomBar = {
-            Column(Modifier.navigationBarsPadding().imePadding()) {
+            // No `navigationBarsPadding`/`imePadding` here: those are Android's gesture bar and
+            // soft keyboard, and a desktop window has neither to make room for.
+            Column {
                 state.errorBanner?.let { error ->
                     ErrorBanner(error, onDismiss = model::dismissError)
                 }
                 if (state.needsApiKey) {
                     ApiKeyPrompt(onOpenSettings = onOpenSettings)
                 } else {
+                    // On the transcript's measure, and centred with it: a composer running the
+                    // full width of the window puts the caret somewhere other than under the
+                    // column of text it is replying to.
+                    Box(Modifier.fillMaxWidth()) {
                     Composer(
                         input = state.composerText,
                         attachments = state.pendingAttachments,
@@ -378,7 +463,12 @@ fun ChatScreen(
                         // composer hides the button rather than offering one that does nothing.
                         onToggleVoice = {},
                         onOpenParameters = { showParameters = true },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .widthIn(max = TranscriptMeasure)
+                            .fillMaxWidth(),
                     )
+                    }
                 }
             }
         },
@@ -410,11 +500,18 @@ fun ChatScreen(
                             onKeep = model::keepAgentRun,
                         )
                     }
+                    // Weighted rather than filled: the agent banner above it, when there is one,
+                    // has to take its height from somewhere. Inside that, the transcript holds a
+                    // measure instead of filling the window — a line of prose set across 1100pt
+                    // is one the eye loses its place on returning from the right-hand end, and a
+                    // desktop window is always wider than anything anybody wants to read.
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
                     LazyColumn(
                         state = listState,
-                        // Weighted rather than filled: the agent banner above it, when there is
-                        // one, has to take its height from somewhere.
-                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .widthIn(max = TranscriptMeasure)
+                            .fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
@@ -447,6 +544,7 @@ fun ChatScreen(
                                 onMore = { actionTargetId = message.id },
                             )
                         }
+                    }
                     }
                 }
 
@@ -578,11 +676,14 @@ private fun FindBar(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onClose: () -> Unit,
+    topInset: Dp = 0.dp,
+    leadingInset: Dp = 0.dp,
 ) {
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Column {
+    Spacer(Modifier.height(topInset))
     TopAppBar(
         title = {
             TextField(
@@ -604,7 +705,7 @@ private fun FindBar(
             )
         },
         navigationIcon = {
-            IconButton(onClick = onClose) {
+            IconButton(onClick = onClose, modifier = Modifier.padding(start = leadingInset)) {
                 Icon(Icons.Outlined.Close, contentDescription = "Close search")
             }
         },

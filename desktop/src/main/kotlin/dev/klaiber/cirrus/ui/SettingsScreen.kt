@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -41,14 +42,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.klaiber.cirrus.data.remote.elevenlabs.ElevenLabsVoice
 import dev.klaiber.cirrus.di.AppContainer
+import dev.klaiber.cirrus.ui.components.PillButton
+import dev.klaiber.cirrus.ui.components.PillStyle
+import dev.klaiber.cirrus.ui.components.ScreenTopBar
+import dev.klaiber.cirrus.ui.components.readingMeasure
 import dev.klaiber.cirrus.domain.model.AppSettings
 import dev.klaiber.cirrus.domain.model.ElevenLabsModel
 import dev.klaiber.cirrus.domain.model.SpeechEngine
 import dev.klaiber.cirrus.domain.model.ThemeMode
 import dev.klaiber.cirrus.domain.userMessage
 import kotlinx.coroutines.launch
+import java.awt.Desktop
+import java.io.File
+
+/**
+ * What to call this build when it names itself.
+ *
+ * Read from the jar's manifest so a package cannot disagree with itself, with the current release
+ * as the fallback for a `:desktop:run` — which has no manifest to read and is where this string is
+ * least important anyway.
+ */
+private val AppVersion: String =
+    AppContainer::class.java.`package`?.implementationVersion ?: "1.7.0"
 
 /**
  * Everything configurable, in the sections `SettingSwitch.path` names.
@@ -65,33 +84,32 @@ fun SettingsScreen(
     onOpenAgents: () -> Unit,
     onOpenMcpServers: () -> Unit,
     onRunSetup: () -> Unit,
+    topInset: Dp = 0.dp,
+    leadingInset: Dp = 0.dp,
 ) {
     val scope = rememberCoroutineScope()
     val repository = container.settingsRepository
-    val settings by repository.settings.collectAsState(AppSettings())
-    val models by container.modelRepository.models.collectAsState(emptyList())
+    // Both are `StateFlow`s the container loads before the first window, so they are read without
+    // an initial value — supplying one selects the plain-`Flow` overload and shows a default for
+    // the first frame, which here means every switch on the page starting off and snapping to its
+    // real position a frame later.
+    val settings by repository.settings.collectAsState()
+    val models by container.modelRepository.models.collectAsState()
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onClose) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "Back to chat")
-            }
-            Text(
-                text = "Settings",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        ScreenTopBar(
+            title = "Settings",
+            onBack = onClose,
+            topInset = topInset,
+            leadingInset = leadingInset,
+        )
 
+        // Centred on a measure rather than filled. A settings row stretched across a 1180pt window
+        // leaves its switch a hand's width from the label it belongs to, which is the one thing a
+        // settings list must never do.
         LazyColumn(
             Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -280,6 +298,10 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            item {
+                AboutSection(container = container)
+            }
         }
     }
 }
@@ -408,6 +430,11 @@ private fun SpeechSection(container: AppContainer, settings: AppSettings) {
             onSave = { scope.launch { repository.setElevenLabsKey(it) } },
             onClear = { scope.launch { repository.clearElevenLabsKey() } },
         )
+        // The picker the Android build has had all along. `ElevenLabsClient.voices()` came across
+        // with the rest of the client and then had nothing calling it, which left the desktop
+        // build able to synthesise in exactly one voice — the account default — with no way to say
+        // so and no way to change it.
+        VoiceRow(container = container, settings = settings)
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 16.dp)) {
                 Text("ElevenLabs model", style = MaterialTheme.typography.bodyLarge)
@@ -533,7 +560,9 @@ private fun MusicSection(container: AppContainer, settings: AppSettings) {
 
 @Composable
 private fun Section(section: SettingsSection, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
+    // The measure is applied once, here, rather than at each of the dozen call sites. Every
+    // section is a column of label-and-control rows and every one of them wants the same width.
+    Column(Modifier.readingMeasure().padding(bottom = 20.dp)) {
         Text(
             text = section.title,
             style = MaterialTheme.typography.titleMedium,
@@ -727,6 +756,180 @@ private fun ThemeRow(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Which of the account's voices reads an answer back.
+ *
+ * The list is fetched on demand rather than when the section appears: it is a network call against
+ * somebody's paid account, and most openings of this page are on the way to something else. Until
+ * it has been asked for, the row says "Load voices" and Cirrus uses whatever the account's default
+ * is — which is a working state, not a broken one, and worth saying so.
+ */
+@Composable
+private fun VoiceRow(container: AppContainer, settings: AppSettings) {
+    val scope = rememberCoroutineScope()
+    var voices by remember { mutableStateOf<List<ElevenLabsVoice>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var expanded by remember { mutableStateOf(false) }
+
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 16.dp)) {
+            Text("Voice", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = settings.elevenLabsVoiceName.ifBlank { "The account's default voice" },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Box {
+            TextButton(
+                enabled = settings.hasElevenLabsKey && !loading,
+                onClick = {
+                    if (voices.isNotEmpty()) {
+                        expanded = true
+                        return@TextButton
+                    }
+                    scope.launch {
+                        loading = true
+                        error = null
+                        runCatching { container.elevenLabsClient.voices() }
+                            .onSuccess {
+                                voices = it
+                                expanded = it.isNotEmpty()
+                                if (it.isEmpty()) error = "That account has no voices on it."
+                            }
+                            .onFailure { error = it.userMessage() }
+                        loading = false
+                    }
+                },
+            ) {
+                Text(if (voices.isEmpty()) "Load voices" else "Change")
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                voices.forEach { voice ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(voice.name)
+                                voice.description?.let {
+                                    Text(
+                                        text = it,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        },
+                        onClick = {
+                            scope.launch {
+                                container.settingsRepository.setElevenLabsVoice(voice.id, voice.name)
+                            }
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+        if (loading) {
+            Spacer(Modifier.width(8.dp))
+            CircularProgressIndicator(Modifier.height(16.dp).width(16.dp))
+        }
+    }
+    error?.let {
+        Text(
+            text = it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+/**
+ * What this build is, where it keeps its things, and the one irreversible button.
+ *
+ * The folder is named rather than merely alluded to, and there is a button that opens it, because
+ * this is the build with no Keystore and no Room database — "on this computer only" is a claim the
+ * user should be able to go and check. It is also the answer to backing Cirrus up, which on
+ * Android is the system's problem and here is nobody's until somebody says where to copy from.
+ */
+@Composable
+private fun AboutSection(container: AppContainer) {
+    val scope = rememberCoroutineScope()
+    var confirming by remember { mutableStateOf(false) }
+
+    Section(SettingsSection.ABOUT) {
+        Text(
+            text = "Cirrus $AppVersion for the desktop.",
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Conversations, memories, agents and keys are files in ${container.dataDir.path}. " +
+                "Nothing is synced anywhere, and copying that folder is what backing Cirrus up means.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton(
+                label = "Open data folder",
+                onClick = { revealInFileManager(container.dataDir) },
+                style = PillStyle.Secondary,
+            )
+            PillButton(
+                label = "Delete all conversations",
+                onClick = { confirming = true },
+                style = PillStyle.Secondary,
+            )
+        }
+    }
+
+    if (confirming) {
+        AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text("Delete every conversation?") },
+            text = {
+                Text(
+                    "Every thread and every message goes, including the ones agents wrote. " +
+                        "Memories, agents and settings are left alone. This cannot be undone.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch { container.conversationRepository.deleteAllConversations() }
+                        confirming = false
+                    },
+                ) {
+                    Text("Delete all", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirming = false }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+/**
+ * Shows a folder in whatever this desktop calls its file manager.
+ *
+ * `Desktop.open` on a directory is the portable way in, and the two failures worth naming are both
+ * "there is no desktop here" — a headless session, or a Linux box with no `xdg-open`. Neither is
+ * worth an error dialog over a convenience button, so a failure simply does nothing rather than
+ * interrupting somebody who can navigate to the path printed directly above it.
+ */
+private fun revealInFileManager(directory: File) {
+    runCatching {
+        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+            Desktop.getDesktop().open(directory)
         }
     }
 }
