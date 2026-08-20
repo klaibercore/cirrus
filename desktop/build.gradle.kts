@@ -36,7 +36,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Cirrus"
-            packageVersion = "1.7.0"
+            packageVersion = "1.8.0"
             description = "A capable, local-first chat client for Ollama."
         }
     }

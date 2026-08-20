@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [1.8.0] - 2026-08-20
+
+### Added
+
+- **The desktop window takes over its own title bar.** macOS was painting a grey system bar over a
+  near-black app; it now stays transparent while the traffic lights remain, and every screen insets
+  past the strip rather than drawing into it.
+- **A real menu bar**, with Cmd+N, Cmd+, and Cmd+\ as its own — a menu shortcut is consumed before
+  a root-level key handler ever sees it, so those three could not also live anywhere else.
+- **The conversation list is a resident sidebar above 880pt of window width**, and a drawer below
+  it, since a window can be dragged across that line at any moment.
+- **Model picker, parameters and agent editors open as centred panels**, not bottom sheets — a
+  sheet rising from the bottom edge answers a thumb on a phone, not a pointer in a window.
+- Settings, chat and onboarding now cap their line length instead of stretching a settings row a
+  hand's width from its label.
+- A desktop-only **About** section in Settings names the data folder and offers to open it.
+
 ## [1.7.0] - 2026-08-17
 
 ### Added
