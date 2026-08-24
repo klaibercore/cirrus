@@ -1,5 +1,5 @@
 [versions]
-agp = "9.3.1"
+agp = "9.3.2"
 # AGP 9 ships built-in Kotlin support. We raise KGP past AGP's pinned default via the root
 # buildscript classpath; Compose/serialization plugins and KSP must track this same release.
 kotlin = "2.4.10"
