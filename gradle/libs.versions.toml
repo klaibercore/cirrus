@@ -27,7 +27,7 @@ espresso = "3.7.0"
 turbine = "1.2.1"
 # Compose Multiplatform for the desktop target. 1.11.x is the stable line that pairs with
 # Kotlin 2.3.x; the compose compiler plugin is the Kotlin one, already pinned above.
-compose = "1.11.1"
+compose = "1.12.0"
 javaxInject = "1"
 
 [libraries]
